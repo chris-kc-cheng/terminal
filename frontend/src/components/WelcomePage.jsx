@@ -9,7 +9,6 @@ import {
   Card,
   CardContent,
   Avatar,
-  Chip,
   Divider,
   Alert,
   CircularProgress,
@@ -18,9 +17,17 @@ import {
   List,
   ListItemButton,
   ListItemText,
+  Menu,
+  MenuItem,
+  ListItemIcon,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
   useMediaQuery,
 } from "@mui/material";
 import LogoutIcon from "@mui/icons-material/Logout";
+import PersonIcon from "@mui/icons-material/Person";
 import ApiIcon from "@mui/icons-material/Api";
 import Brightness4Icon from "@mui/icons-material/Brightness4";
 import Brightness7Icon from "@mui/icons-material/Brightness7";
@@ -89,6 +96,8 @@ export default function WelcomePage() {
   const [selectedSection, setSelectedSection] = useState("Market");
   const [selectedSub, setSelectedSub] = useState(NAV["Market"][0].key);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [menuAnchor, setMenuAnchor] = useState(null);
+  const [profileOpen, setProfileOpen] = useState(false);
   const isDesktop = useMediaQuery("(min-width:900px)");
 
   const fetchGreeting = async () => {
@@ -137,23 +146,54 @@ export default function WelcomePage() {
             {mode === "light" ? <Brightness4Icon /> : <Brightness7Icon />}
           </IconButton>
 
-          <Chip
-            avatar={
-              <Avatar sx={{ bgcolor: "primary.light" }}>{user?.username?.[0]?.toUpperCase()}</Avatar>
-            }
-            label={user?.username}
-            variant="outlined"
-            sx={{ color: "white", borderColor: "rgba(255,255,255,0.5)", mr: 2 }}
-          />
-          <Button
-            color="inherit"
-            startIcon={<LogoutIcon />}
-            onClick={logout}
-            variant="outlined"
-            sx={{ borderColor: "rgba(255,255,255,0.5)" }}
+          <IconButton onClick={(e) => setMenuAnchor(e.currentTarget)} sx={{ p: 0 }}>
+            <Avatar sx={{ bgcolor: "primary.light", width: 36, height: 36, fontSize: 16 }}>
+              {user?.username?.[0]?.toUpperCase()}
+            </Avatar>
+          </IconButton>
+
+          <Menu
+            anchorEl={menuAnchor}
+            open={Boolean(menuAnchor)}
+            onClose={() => setMenuAnchor(null)}
+            transformOrigin={{ horizontal: "right", vertical: "top" }}
+            anchorOrigin={{ horizontal: "right", vertical: "bottom" }}
           >
-            Logout
-          </Button>
+            <MenuItem onClick={() => { setMenuAnchor(null); setProfileOpen(true); }}>
+              <ListItemIcon><PersonIcon fontSize="small" /></ListItemIcon>
+              Profile
+            </MenuItem>
+            <MenuItem onClick={() => { setMenuAnchor(null); logout(); }}>
+              <ListItemIcon><LogoutIcon fontSize="small" /></ListItemIcon>
+              Logout
+            </MenuItem>
+          </Menu>
+
+          <Dialog open={profileOpen} onClose={() => setProfileOpen(false)} maxWidth="xs" fullWidth>
+            <DialogTitle>Profile</DialogTitle>
+            <DialogContent dividers>
+              <Box sx={{ display: "flex", flexDirection: "column", alignItems: "center", py: 2, gap: 2 }}>
+                <Avatar sx={{ bgcolor: "primary.main", width: 64, height: 64, fontSize: 28 }}>
+                  {user?.username?.[0]?.toUpperCase()}
+                </Avatar>
+                <Box sx={{ width: "100%" }}>
+                  {[
+                    { label: "Username", value: user?.username },
+                    { label: "Email", value: user?.email },
+                    { label: "Role", value: user?.role },
+                  ].map(({ label, value }) => (
+                    <Box key={label} sx={{ display: "flex", justifyContent: "space-between", py: 1, borderBottom: "1px solid", borderColor: "divider" }}>
+                      <Typography variant="body2" color="text.secondary">{label}</Typography>
+                      <Typography variant="body2" fontWeight={600}>{value ?? "—"}</Typography>
+                    </Box>
+                  ))}
+                </Box>
+              </Box>
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={() => setProfileOpen(false)}>Close</Button>
+            </DialogActions>
+          </Dialog>
         </Toolbar>
       </AppBar>
 
