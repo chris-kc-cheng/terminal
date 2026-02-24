@@ -18,11 +18,9 @@ import {
   List,
   ListItemButton,
   ListItemText,
-  ListItemIcon,
   useMediaQuery,
 } from "@mui/material";
 import LogoutIcon from "@mui/icons-material/Logout";
-import WavingHandIcon from "@mui/icons-material/WavingHand";
 import ApiIcon from "@mui/icons-material/Api";
 import Brightness4Icon from "@mui/icons-material/Brightness4";
 import Brightness7Icon from "@mui/icons-material/Brightness7";
@@ -31,10 +29,73 @@ import { useTheme } from "../ThemeContext";
 import { getGreeting } from "../api";
 import Equity from "../pages/Market/Equity";
 import FixedIncome from "../pages/Market/FixedIncome";
+import Currency from "../pages/Market/Currency";
+import Indices from "../pages/Market/Indices";
+import YieldCurve from "../pages/Market/YieldCurve";
 import AnalysisOverview from "../pages/Analysis/AnalysisOverview";
+import Performance from "../pages/Analysis/Performance";
 import FactorAnalysis from "../pages/Analysis/FactorAnalysis";
+import Portfolio from "../pages/Analysis/Portfolio";
+import Heatmap from "../pages/Analysis/Heatmap";
+import Factors from "../pages/Analysis/Factors";
+import Peers from "../pages/Analysis/Peers";
 import ModelOverview from "../pages/Model/ModelOverview";
 import RiskModel from "../pages/Model/RiskModel";
+import ALM from "../pages/Model/ALM";
+import Options from "../pages/Model/Options";
+import Linking from "../pages/Model/Linking";
+
+const NAV = {
+  Market: [
+    { key: "Equity", label: "Equity" },
+    { key: "FixedIncome", label: "Fixed Income" },
+    { key: "Currency", label: "Currency" },
+    { key: "Indices", label: "Indices" },
+    { key: "YieldCurve", label: "Yield Curve" },
+  ],
+  Analysis: [
+    { key: "Overview", label: "Overview" },
+    { key: "Performance", label: "Performance" },
+    { key: "FactorAnalysis", label: "Factor Analysis" },
+    { key: "Portfolio", label: "Portfolio" },
+    { key: "Heatmap", label: "Heatmap" },
+    { key: "Factors", label: "Factors" },
+    { key: "Peers", label: "Peers" },
+  ],
+  Model: [
+    { key: "Overview", label: "Overview" },
+    { key: "RiskModel", label: "Risk Model" },
+    { key: "ALM", label: "ALM" },
+    { key: "Options", label: "Options" },
+    { key: "Linking", label: "Linking" },
+  ],
+};
+
+const PAGES = {
+  Equity: <Equity />,
+  FixedIncome: <FixedIncome />,
+  Currency: <Currency />,
+  Indices: <Indices />,
+  YieldCurve: <YieldCurve />,
+  Overview: null, // resolved per section below
+  Performance: <Performance />,
+  FactorAnalysis: <FactorAnalysis />,
+  Portfolio: <Portfolio />,
+  Heatmap: <Heatmap />,
+  Factors: <Factors />,
+  Peers: <Peers />,
+  RiskModel: <RiskModel />,
+  ALM: <ALM />,
+  Options: <Options />,
+  Linking: <Linking />,
+};
+
+function resolvePage(section, sub) {
+  if (sub === "Overview") {
+    return section === "Analysis" ? <AnalysisOverview /> : <ModelOverview />;
+  }
+  return PAGES[sub] ?? null;
+}
 
 export default function WelcomePage() {
   const { user, logout } = useAuth();
@@ -66,16 +127,13 @@ export default function WelcomePage() {
             Terminal
           </Typography>
 
-          {/* Top-level sections */}
           {["Market", "Analysis", "Model"].map((sec) => (
             <Button
               key={sec}
               color={selectedSection === sec ? "secondary" : "inherit"}
               onClick={() => {
                 setSelectedSection(sec);
-                // default subpage per section
-                const defaults = { Market: "Equity", Analysis: "Overview", Model: "Overview" };
-                setSelectedSub(defaults[sec] || "");
+                setSelectedSub(NAV[sec][0].key);
                 if (!isDesktop) setDrawerOpen(true);
               }}
               sx={{ color: "white", textTransform: "none", fontWeight: 700 }}
@@ -128,45 +186,10 @@ export default function WelcomePage() {
       >
         <Box sx={{ mt: 2 }}>
           <List>
-            {selectedSection === "Market" && [
-              { key: "Equity", label: "Equity" },
-              { key: "FixedIncome", label: "Fixed Income" },
-            ].map((item) => (
+            {NAV[selectedSection].map((item) => (
               <ListItemButton
                 key={item.key}
-                selected={selectedSub === item.key || selectedSub === item.label}
-                onClick={() => {
-                  setSelectedSub(item.key === "FixedIncome" ? "Fixed Income" : item.key);
-                  if (!isDesktop) setDrawerOpen(false);
-                }}
-              >
-                <ListItemText primary={item.label} />
-              </ListItemButton>
-            ))}
-
-            {selectedSection === "Analysis" && [
-              { key: "Overview", label: "Overview" },
-              { key: "FactorAnalysis", label: "Factor Analysis" },
-            ].map((item) => (
-              <ListItemButton
-                key={item.key}
-                selected={selectedSub === item.key || selectedSub === item.label}
-                onClick={() => {
-                  setSelectedSub(item.key);
-                  if (!isDesktop) setDrawerOpen(false);
-                }}
-              >
-                <ListItemText primary={item.label} />
-              </ListItemButton>
-            ))}
-
-            {selectedSection === "Model" && [
-              { key: "Overview", label: "Overview" },
-              { key: "RiskModel", label: "Risk Model" },
-            ].map((item) => (
-              <ListItemButton
-                key={item.key}
-                selected={selectedSub === item.key || selectedSub === item.label}
+                selected={selectedSub === item.key}
                 onClick={() => {
                   setSelectedSub(item.key);
                   if (!isDesktop) setDrawerOpen(false);
@@ -182,17 +205,8 @@ export default function WelcomePage() {
       {/* Page content area */}
       <Box component="main" sx={{ flexGrow: 1, p: 3, mt: "64px" }}>
         <Container maxWidth="lg" sx={{ mt: 2 }}>
-          {/* Render selected subpage */}
-          {selectedSection === "Market" && (selectedSub === "Equity" || selectedSub === "Equity") && <Equity />}
-          {selectedSection === "Market" && (selectedSub === "Fixed Income" || selectedSub === "FixedIncome") && <FixedIncome />}
+          {resolvePage(selectedSection, selectedSub)}
 
-          {selectedSection === "Analysis" && (selectedSub === "Overview" || selectedSub === "Overview") && <AnalysisOverview />}
-          {selectedSection === "Analysis" && selectedSub === "FactorAnalysis" && <FactorAnalysis />}
-
-          {selectedSection === "Model" && (selectedSub === "Overview" || selectedSub === "Overview") && <ModelOverview />}
-          {selectedSection === "Model" && selectedSub === "RiskModel" && <RiskModel />}
-
-          {/* Divider and demo API card stays below */}
           <Divider sx={{ my: 3 }} />
 
           <Card elevation={3} sx={{ borderRadius: 3 }}>
