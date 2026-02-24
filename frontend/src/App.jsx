@@ -1,19 +1,24 @@
 import { ThemeProvider, createTheme, CssBaseline, Box, CircularProgress } from "@mui/material";
 import { AuthProvider, useAuth } from "./AuthContext";
+import { ThemeProvider as CustomThemeProvider, useTheme } from "./ThemeContext";
 import LoginModal from "./components/LoginModal";
 import WelcomePage from "./components/WelcomePage";
 
-const theme = createTheme({
-  palette: {
-    mode: "light",
-    primary: { main: "#1976d2" },
-    background: { default: "#f5f7fa" },
-  },
-  shape: { borderRadius: 8 },
-});
-
 function AppContent() {
   const { user, loading } = useAuth();
+  const { mode } = useTheme();
+
+  const theme = createTheme({
+    palette: {
+      mode,
+      primary: { main: "#1976d2" },
+      background: { 
+        default: mode === "light" ? "#f5f7fa" : "#121212",
+        paper: mode === "light" ? "#ffffff" : "#1e1e1e",
+      },
+    },
+    shape: { borderRadius: 8 },
+  });
 
   if (loading) {
     return (
@@ -24,20 +29,20 @@ function AppContent() {
   }
 
   return (
-    <>
+    <ThemeProvider theme={theme}>
+      <CssBaseline />
       <LoginModal open={!user} />
       {user && <WelcomePage />}
-    </>
+    </ThemeProvider>
   );
 }
 
 export default function App() {
   return (
-    <ThemeProvider theme={theme}>
-      <CssBaseline />
+    <CustomThemeProvider>
       <AuthProvider>
         <AppContent />
       </AuthProvider>
-    </ThemeProvider>
+    </CustomThemeProvider>
   );
 }

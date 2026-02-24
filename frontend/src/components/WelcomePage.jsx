@@ -13,15 +13,20 @@ import {
   Divider,
   Alert,
   CircularProgress,
+  IconButton,
 } from "@mui/material";
 import LogoutIcon from "@mui/icons-material/Logout";
 import WavingHandIcon from "@mui/icons-material/WavingHand";
 import ApiIcon from "@mui/icons-material/Api";
+import Brightness4Icon from "@mui/icons-material/Brightness4";
+import Brightness7Icon from "@mui/icons-material/Brightness7";
 import { useAuth } from "../AuthContext";
+import { useTheme } from "../ThemeContext";
 import { getGreeting } from "../api";
 
 export default function WelcomePage() {
   const { user, logout } = useAuth();
+  const { mode, toggleTheme } = useTheme();
   const [greeting, setGreeting] = useState(null);
   const [loadingGreeting, setLoadingGreeting] = useState(false);
 
@@ -45,6 +50,14 @@ export default function WelcomePage() {
           <Typography variant="h6" sx={{ flexGrow: 1, fontWeight: 700 }}>
             MyApp
           </Typography>
+          <IconButton
+            color="inherit"
+            onClick={toggleTheme}
+            sx={{ mr: 2 }}
+            title={mode === "light" ? "Switch to dark mode" : "Switch to light mode"}
+          >
+            {mode === "light" ? <Brightness4Icon /> : <Brightness7Icon />}
+          </IconButton>
           <Chip
             avatar={
               <Avatar sx={{ bgcolor: "primary.light" }}>
