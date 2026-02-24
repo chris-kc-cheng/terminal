@@ -5,3 +5,10 @@ passlib[bcrypt]==1.7.4
 bcrypt==4.0.1
 python-multipart==0.0.20
 python-dotenv==1.0.1
+fintoolkit
+pandas
+numpy
+scipy
+statsmodels
+scikit-learn
+yfinance
