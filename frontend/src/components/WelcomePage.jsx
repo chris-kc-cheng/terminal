@@ -31,43 +31,34 @@ import Equity from "../pages/Market/Equity";
 import FixedIncome from "../pages/Market/FixedIncome";
 import Currency from "../pages/Market/Currency";
 import Indices from "../pages/Market/Indices";
-import YieldCurve from "../pages/Market/YieldCurve";
-import AnalysisOverview from "../pages/Analysis/AnalysisOverview";
-import Performance from "../pages/Analysis/Performance";
-import FactorAnalysis from "../pages/Analysis/FactorAnalysis";
-import Portfolio from "../pages/Analysis/Portfolio";
 import Heatmap from "../pages/Analysis/Heatmap";
+import Performance from "../pages/Analysis/Performance";
+import Portfolio from "../pages/Analysis/Portfolio";
 import Factors from "../pages/Analysis/Factors";
 import Peers from "../pages/Analysis/Peers";
-import ModelOverview from "../pages/Model/ModelOverview";
-import RiskModel from "../pages/Model/RiskModel";
-import ALM from "../pages/Model/ALM";
 import Options from "../pages/Model/Options";
+import ALM from "../pages/Model/ALM";
 import Linking from "../pages/Model/Linking";
 
+// Matches terminal.py from ftk-streamlit exactly (5 + 4 + 3 pages)
 const NAV = {
   Market: [
     { key: "Equity", label: "Equity" },
     { key: "FixedIncome", label: "Fixed Income" },
     { key: "Currency", label: "Currency" },
-    { key: "Indices", label: "Indices" },
-    { key: "YieldCurve", label: "Yield Curve" },
+    { key: "Indices", label: "Economic Indicators" },
+    { key: "Heatmap", label: "Heat Map" },
   ],
   Analysis: [
-    { key: "Overview", label: "Overview" },
-    { key: "Performance", label: "Performance" },
-    { key: "FactorAnalysis", label: "Factor Analysis" },
-    { key: "Portfolio", label: "Portfolio" },
-    { key: "Heatmap", label: "Heatmap" },
-    { key: "Factors", label: "Factors" },
-    { key: "Peers", label: "Peers" },
+    { key: "Performance", label: "Performance & Risk" },
+    { key: "Portfolio", label: "Portfolio Optimization" },
+    { key: "Factors", label: "Factor Exposure" },
+    { key: "Peers", label: "Peer Group" },
   ],
   Model: [
-    { key: "Overview", label: "Overview" },
-    { key: "RiskModel", label: "Risk Model" },
-    { key: "ALM", label: "ALM" },
     { key: "Options", label: "Options" },
-    { key: "Linking", label: "Linking" },
+    { key: "ALM", label: "Yield Curve" },
+    { key: "Linking", label: "Multi-Period Linking" },
   ],
 };
 
@@ -76,24 +67,17 @@ const PAGES = {
   FixedIncome: <FixedIncome />,
   Currency: <Currency />,
   Indices: <Indices />,
-  YieldCurve: <YieldCurve />,
-  Overview: null, // resolved per section below
-  Performance: <Performance />,
-  FactorAnalysis: <FactorAnalysis />,
-  Portfolio: <Portfolio />,
   Heatmap: <Heatmap />,
+  Performance: <Performance />,
+  Portfolio: <Portfolio />,
   Factors: <Factors />,
   Peers: <Peers />,
-  RiskModel: <RiskModel />,
-  ALM: <ALM />,
   Options: <Options />,
+  ALM: <ALM />,
   Linking: <Linking />,
 };
 
 function resolvePage(section, sub) {
-  if (sub === "Overview") {
-    return section === "Analysis" ? <AnalysisOverview /> : <ModelOverview />;
-  }
   return PAGES[sub] ?? null;
 }
 
@@ -103,7 +87,7 @@ export default function WelcomePage() {
   const [greeting, setGreeting] = useState(null);
   const [loadingGreeting, setLoadingGreeting] = useState(false);
   const [selectedSection, setSelectedSection] = useState("Market");
-  const [selectedSub, setSelectedSub] = useState("Equity");
+  const [selectedSub, setSelectedSub] = useState(NAV["Market"][0].key);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const isDesktop = useMediaQuery("(min-width:900px)");
 
