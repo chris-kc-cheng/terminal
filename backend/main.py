@@ -6,6 +6,7 @@ import math
 import json
 import numpy as np
 import pandas as pd
+import toolkit as ftk
 from functools import wraps
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, HTTPException, Query, status
@@ -150,7 +151,7 @@ def alm(
     current_user: dict = Depends(get_current_user),
 ):
     try:
-        import toolkit as ftk
+
         rates_df, bonds_df = ftk.cir(
             years=years, a=a, b=b, sigma=sigma, init=init,
             scenarios=scenarios, steps_per_year=steps_per_year,
@@ -173,7 +174,7 @@ def linking(
     current_user: dict = Depends(get_current_user),
 ):
     try:
-        import toolkit as ftk
+
 
         if sample == 1:
             portfolio_data = {
@@ -252,7 +253,7 @@ def options(
     current_user: dict = Depends(get_current_user),
 ):
     try:
-        import toolkit as ftk
+
         positions = OPTION_STRATEGIES.get(strategy, OPTION_STRATEGIES["Long Call"])
         spots = np.linspace(50, 150, 101).tolist()
 
@@ -316,7 +317,7 @@ def economic(current_user: dict = Depends(get_current_user)):
         if now - ts < 3600:
             return val
     try:
-        import toolkit as ftk
+
 
         ca = ftk.get_statcan_bulk(n=120)
         us = ftk.get_bls_bulk()
@@ -372,7 +373,7 @@ def equity(
         if now - ts < 3600:
             return val
     try:
-        import toolkit as ftk
+
         tickers = list(EQUITY_INDICES.keys())
         px = ftk.get_yahoo_bulk(tickers, period="2y")
         if px.empty:
@@ -438,7 +439,7 @@ def fixed_income(current_user: dict = Depends(get_current_user)):
         if now - ts < 3600:
             return val
     try:
-        import toolkit as ftk
+
 
         # US yield curve
         us_curve = ftk.get_us_yield_curve(n=2)
@@ -499,7 +500,7 @@ def currency(
         cached_rates, cached_labels = None, None
 
     try:
-        import toolkit as ftk
+
         if cached_rates is None:
             tickers = list(FX_TICKERS.keys())
             px = ftk.get_yahoo_bulk(tickers, period="1y")
@@ -580,7 +581,7 @@ def heatmap(
         if now - ts < 86400:
             return val
     try:
-        import toolkit as ftk
+
         tickers = list(HEATMAP_TICKERS.keys())
         px = ftk.get_yahoo_bulk(tickers, period="10y").rename(columns=HEATMAP_TICKERS)
 
@@ -632,7 +633,7 @@ def portfolio(
         if now - ts < 3600:
             return val
     try:
-        import toolkit as ftk
+
 
         px = ftk.get_yahoo_bulk(list(PORTFOLIO_TICKERS.keys()), period="5y")
         px = px.rename(columns=PORTFOLIO_TICKERS)
@@ -686,7 +687,7 @@ def portfolio(
 @app.get("/api/factors/datasets")
 def factor_datasets(current_user: dict = Depends(get_current_user)):
     try:
-        import toolkit as ftk
+
         datasets = ftk.get_famafrench_datasets()
         return {"datasets": datasets}
     except Exception as e:
@@ -707,7 +708,7 @@ def factors(
         if now - ts < 3600:
             return val
     try:
-        import toolkit as ftk
+
 
         ff = ftk.get_famafrench_factors(dataset, mom)
         price = ftk.get_yahoo(ticker.upper())
@@ -780,7 +781,7 @@ def peers(
         if now - ts < 3600:
             return val
     try:
-        import toolkit as ftk
+
 
         ticker_list = [t.strip() for t in tickers.split(",")]
         all_tickers = ticker_list + [benchmark]
@@ -869,7 +870,7 @@ def performance(
         if now - ts < 3600:
             return val
     try:
-        import toolkit as ftk
+
 
         all_tickers = [fund, benchmark, rfr_ticker]
         px = ftk.get_yahoo_bulk(all_tickers, period="10Y")
