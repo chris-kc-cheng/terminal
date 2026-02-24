@@ -6,12 +6,7 @@ import {
   Button,
   Container,
   Box,
-  Card,
-  CardContent,
   Avatar,
-  Divider,
-  Alert,
-  CircularProgress,
   IconButton,
   Drawer,
   List,
@@ -28,12 +23,10 @@ import {
 } from "@mui/material";
 import LogoutIcon from "@mui/icons-material/Logout";
 import PersonIcon from "@mui/icons-material/Person";
-import ApiIcon from "@mui/icons-material/Api";
 import Brightness4Icon from "@mui/icons-material/Brightness4";
 import Brightness7Icon from "@mui/icons-material/Brightness7";
 import { useAuth } from "../AuthContext";
 import { useTheme } from "../ThemeContext";
-import { getGreeting } from "../api";
 import Equity from "../pages/Market/Equity";
 import FixedIncome from "../pages/Market/FixedIncome";
 import Currency from "../pages/Market/Currency";
@@ -91,26 +84,12 @@ function resolvePage(section, sub) {
 export default function WelcomePage() {
   const { user, logout } = useAuth();
   const { mode, toggleTheme } = useTheme();
-  const [greeting, setGreeting] = useState(null);
-  const [loadingGreeting, setLoadingGreeting] = useState(false);
   const [selectedSection, setSelectedSection] = useState("Market");
   const [selectedSub, setSelectedSub] = useState(NAV["Market"][0].key);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [menuAnchor, setMenuAnchor] = useState(null);
   const [profileOpen, setProfileOpen] = useState(false);
   const isDesktop = useMediaQuery("(min-width:900px)");
-
-  const fetchGreeting = async () => {
-    setLoadingGreeting(true);
-    try {
-      const res = await getGreeting();
-      setGreeting(res.data.message);
-    } catch {
-      setGreeting("Failed to fetch greeting from API.");
-    } finally {
-      setLoadingGreeting(false);
-    }
-  };
 
   return (
     <Box sx={{ display: "flex", minHeight: "100vh", bgcolor: "background.default" }}>
@@ -231,36 +210,6 @@ export default function WelcomePage() {
         <Container maxWidth="lg" sx={{ mt: 2 }}>
           {resolvePage(selectedSection, selectedSub)}
 
-          <Divider sx={{ my: 3 }} />
-
-          <Card elevation={3} sx={{ borderRadius: 3 }}>
-            <CardContent sx={{ p: 4 }}>
-              <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 2 }}>
-                <ApiIcon color="primary" />
-                <Typography variant="h6" fontWeight={700}>
-                  Protected API Demo
-                </Typography>
-              </Box>
-              <Typography variant="body2" color="text.secondary" mb={2}>
-                Click below to call a protected FastAPI endpoint using your JWT token.
-              </Typography>
-
-              <Button
-                variant="contained"
-                onClick={fetchGreeting}
-                disabled={loadingGreeting}
-                startIcon={loadingGreeting ? <CircularProgress size={16} color="inherit" /> : null}
-              >
-                {loadingGreeting ? "Fetching..." : "Call /api/greeting"}
-              </Button>
-
-              {greeting && (
-                <Alert severity="success" sx={{ mt: 2 }}>
-                  <strong>API Response:</strong> {greeting}
-                </Alert>
-              )}
-            </CardContent>
-          </Card>
         </Container>
       </Box>
     </Box>
