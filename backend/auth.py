@@ -31,6 +31,12 @@ FAKE_USERS: dict[str, dict] = {
         "role": "user",
         "hashed_password": pwd_context.hash("password123"),
     },
+    "demo": {
+        "username": "demo",
+        "email": "demo@example.com",
+        "role": "viewer",
+        "hashed_password": pwd_context.hash("demo"),
+    },
 }
 
 
