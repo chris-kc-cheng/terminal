@@ -6,7 +6,7 @@ import react from '@vitejs/plugin-react'
 // e.g., base: '/my-repo-name/'
 export default defineConfig({
   plugins: [react()],
-  base: './',
+  base: '/terminal/',
   server: {
     proxy: {
       '/auth': 'http://localhost:8000',
