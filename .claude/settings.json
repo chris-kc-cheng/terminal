@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install --save-dev gh-pages)",
+      "Bash(npm run build)",
+      "Bash(git config user.name)",
+      "Bash(git config user.email)",
+      "Bash(gh auth status)"
+    ],
+    "additionalDirectories": [
+      "C:\\Users\\kc111\\Dev\\terminal"
+    ]
+  }
+}
