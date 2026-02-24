@@ -41,6 +41,7 @@ export default function LoginModal({ open }) {
     try {
       const res = await apiLogin(username, password);
       const token = res.data.access_token;
+      localStorage.setItem("token", token);
       const profile = await getProfile();
       login(token, profile.data);
     } catch (err) {
@@ -103,17 +104,19 @@ export default function LoginModal({ open }) {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               disabled={loading}
-              InputProps={{
-                endAdornment: (
-                  <InputAdornment position="end">
-                    <IconButton
-                      onClick={() => setShowPassword((s) => !s)}
-                      edge="end"
-                    >
-                      {showPassword ? <VisibilityOff /> : <Visibility />}
-                    </IconButton>
-                  </InputAdornment>
-                ),
+              slotProps={{
+                input: {
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <IconButton
+                        onClick={() => setShowPassword((s) => !s)}
+                        edge="end"
+                      >
+                        {showPassword ? <VisibilityOff /> : <Visibility />}
+                      </IconButton>
+                    </InputAdornment>
+                  ),
+                },
               }}
             />
             <Button
