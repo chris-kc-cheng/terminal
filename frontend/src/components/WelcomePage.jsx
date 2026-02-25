@@ -1,4 +1,3 @@
-import { useState } from "react";
 import {
   AppBar,
   Toolbar,
@@ -25,6 +24,8 @@ import LogoutIcon from "@mui/icons-material/Logout";
 import PersonIcon from "@mui/icons-material/Person";
 import Brightness4Icon from "@mui/icons-material/Brightness4";
 import Brightness7Icon from "@mui/icons-material/Brightness7";
+import { useState } from "react";
+import { useNavigate, useLocation, Navigate, Routes, Route } from "react-router-dom";
 import { useAuth } from "../AuthContext";
 import { useTheme } from "../ThemeContext";
 import Equity from "../pages/Market/Equity";
@@ -43,53 +44,54 @@ import Linking from "../pages/Model/Linking";
 // Matches terminal.py from ftk-streamlit exactly (5 + 4 + 3 pages)
 const NAV = {
   Market: [
-    { key: "Equity", label: "Equity" },
-    { key: "FixedIncome", label: "Fixed Income" },
-    { key: "Currency", label: "Currency" },
-    { key: "Indices", label: "Economic Indicators" },
-    { key: "Heatmap", label: "Heat Map" },
+    { key: "Equity",      label: "Equity",               path: "/market/equity" },
+    { key: "FixedIncome", label: "Fixed Income",          path: "/market/fixed-income" },
+    { key: "Currency",    label: "Currency",              path: "/market/currency" },
+    { key: "Indices",     label: "Economic Indicators",   path: "/market/indices" },
+    { key: "Heatmap",     label: "Heat Map",              path: "/market/heatmap" },
   ],
   Analysis: [
-    { key: "Performance", label: "Performance & Risk" },
-    { key: "Portfolio", label: "Portfolio Optimization" },
-    { key: "Factors", label: "Factor Exposure" },
-    { key: "Peers", label: "Peer Group" },
+    { key: "Performance", label: "Performance & Risk",    path: "/analysis/performance" },
+    { key: "Portfolio",   label: "Portfolio Optimization",path: "/analysis/portfolio" },
+    { key: "Factors",     label: "Factor Exposure",       path: "/analysis/factors" },
+    { key: "Peers",       label: "Peer Group",            path: "/analysis/peers" },
   ],
   Model: [
-    { key: "Options", label: "Options" },
-    { key: "ALM", label: "Yield Curve" },
-    { key: "Linking", label: "Multi-Period Linking" },
+    { key: "Options",     label: "Options",               path: "/model/options" },
+    { key: "ALM",         label: "Yield Curve",           path: "/model/alm" },
+    { key: "Linking",     label: "Multi-Period Linking",  path: "/model/linking" },
   ],
 };
 
-const PAGES = {
-  Equity: <Equity />,
-  FixedIncome: <FixedIncome />,
-  Currency: <Currency />,
-  Indices: <Indices />,
-  Heatmap: <Heatmap />,
-  Performance: <Performance />,
-  Portfolio: <Portfolio />,
-  Factors: <Factors />,
-  Peers: <Peers />,
-  Options: <Options />,
-  ALM: <ALM />,
-  Linking: <Linking />,
+// Flat list for reverse path lookup
+const ALL_PAGES = Object.entries(NAV).flatMap(([section, items]) =>
+  items.map((item) => ({ ...item, section }))
+);
+
+const SECTION_FOR_PATH = {
+  "/market":   "Market",
+  "/analysis": "Analysis",
+  "/model":    "Model",
 };
 
-function resolvePage(section, sub) {
-  return PAGES[sub] ?? null;
+function currentSection(pathname) {
+  for (const [prefix, sec] of Object.entries(SECTION_FOR_PATH)) {
+    if (pathname.startsWith(prefix)) return sec;
+  }
+  return "Market";
 }
 
 export default function WelcomePage() {
   const { user, logout } = useAuth();
   const { mode, toggleTheme } = useTheme();
-  const [selectedSection, setSelectedSection] = useState("Market");
-  const [selectedSub, setSelectedSub] = useState(NAV["Market"][0].key);
+  const navigate = useNavigate();
+  const location = useLocation();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [menuAnchor, setMenuAnchor] = useState(null);
   const [profileOpen, setProfileOpen] = useState(false);
   const isDesktop = useMediaQuery("(min-width:900px)");
+
+  const selectedSection = currentSection(location.pathname);
 
   return (
     <Box sx={{ display: "flex", minHeight: "100vh", bgcolor: "background.default" }}>
@@ -104,8 +106,7 @@ export default function WelcomePage() {
               key={sec}
               color={selectedSection === sec ? "secondary" : "inherit"}
               onClick={() => {
-                setSelectedSection(sec);
-                setSelectedSub(NAV[sec][0].key);
+                navigate(NAV[sec][0].path);
                 if (!isDesktop) setDrawerOpen(true);
               }}
               sx={{ color: "white", textTransform: "none", fontWeight: 700 }}
@@ -158,8 +159,8 @@ export default function WelcomePage() {
                 <Box sx={{ width: "100%" }}>
                   {[
                     { label: "Username", value: user?.username },
-                    { label: "Email", value: user?.email },
-                    { label: "Role", value: user?.role },
+                    { label: "Email",    value: user?.email },
+                    { label: "Role",     value: user?.role },
                   ].map(({ label, value }) => (
                     <Box key={label} sx={{ display: "flex", justifyContent: "space-between", py: 1, borderBottom: "1px solid", borderColor: "divider" }}>
                       <Typography variant="body2" color="text.secondary">{label}</Typography>
@@ -192,9 +193,9 @@ export default function WelcomePage() {
             {NAV[selectedSection].map((item) => (
               <ListItemButton
                 key={item.key}
-                selected={selectedSub === item.key}
+                selected={location.pathname === item.path}
                 onClick={() => {
-                  setSelectedSub(item.key);
+                  navigate(item.path);
                   if (!isDesktop) setDrawerOpen(false);
                 }}
               >
@@ -208,8 +209,21 @@ export default function WelcomePage() {
       {/* Page content area */}
       <Box component="main" sx={{ flexGrow: 1, p: 3, mt: "64px" }}>
         <Container maxWidth="lg" sx={{ mt: 2 }}>
-          {resolvePage(selectedSection, selectedSub)}
-
+          <Routes>
+            <Route path="/market/equity"          element={<Equity />} />
+            <Route path="/market/fixed-income"    element={<FixedIncome />} />
+            <Route path="/market/currency"        element={<Currency />} />
+            <Route path="/market/indices"         element={<Indices />} />
+            <Route path="/market/heatmap"         element={<Heatmap />} />
+            <Route path="/analysis/performance"   element={<Performance />} />
+            <Route path="/analysis/portfolio"     element={<Portfolio />} />
+            <Route path="/analysis/factors"       element={<Factors />} />
+            <Route path="/analysis/peers"         element={<Peers />} />
+            <Route path="/model/options"          element={<Options />} />
+            <Route path="/model/alm"              element={<ALM />} />
+            <Route path="/model/linking"          element={<Linking />} />
+            <Route path="*"                       element={<Navigate to="/market/equity" replace />} />
+          </Routes>
         </Container>
       </Box>
     </Box>
