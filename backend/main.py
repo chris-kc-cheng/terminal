@@ -855,27 +855,44 @@ def peers(
 # ---------------------------------------------------------------------------
 # Performance & Risk Analysis
 # ---------------------------------------------------------------------------
+def _m(name, fn, fmt="pct"):
+    """Compute one metric safely, returning {name, value, fmt}."""
+    try:
+        v = fn()
+        if isinstance(v, (pd.Series, pd.DataFrame)):
+            v = float(v.iloc[0]) if len(v) > 0 else None
+        elif isinstance(v, np.ndarray):
+            v = float(v.flat[0]) if v.size > 0 else None
+        else:
+            v = float(v)
+        return {"name": name, "value": _safe(v), "fmt": fmt}
+    except Exception:
+        return {"name": name, "value": None, "fmt": fmt}
+
+
 @app.get("/api/performance")
 def performance(
-    fund: str = Query(default="SPY"),
+    fund: str = Query(default="FCNTX"),
     benchmark: str = Query(default="^GSPC"),
     rfr_ticker: str = Query(default="^IRX"),
-    period: str = Query(default="3Y"),
+    period: str = Query(default="10Y"),
+    window: str = Query(default="Cumulative"),
+    window_size: int = Query(default=36, ge=6, le=120),
+    market: str = Query(default="All"),
+    ci: float = Query(default=0.95, ge=0.9, le=0.995),
     current_user: dict = Depends(get_current_user),
 ):
-    cache_key = f"performance_{fund}_{benchmark}_{rfr_ticker}_{period}"
+    cache_key = f"perf_{fund}_{benchmark}_{rfr_ticker}_{period}_{window}_{window_size}_{market}_{ci}"
     now = time.time()
     if cache_key in _cache:
         val, ts = _cache[cache_key]
         if now - ts < 3600:
             return val
     try:
-
-
         all_tickers = [fund, benchmark, rfr_ticker]
-        px = ftk.get_yahoo_bulk(all_tickers, period="10Y")
+        px = ftk.get_yahoo_bulk(all_tickers, period="20Y")
         px = px.resample("ME").last()
-        px.iloc[:, 2] = px.iloc[:, 2] / 12 / 100  # convert RFR to monthly decimal
+        px.iloc[:, 2] = px.iloc[:, 2] / 12 / 100  # RFR: annualised % → monthly decimal
         rtn = ftk.price_to_return(px).dropna()
 
         period_map = {"1Y": 12, "3Y": 36, "5Y": 60, "10Y": 120, "All": None}
@@ -883,67 +900,134 @@ def performance(
         if n:
             rtn = rtn.iloc[-n:]
 
-        f_col = rtn.columns[0]
-        b_col = rtn.columns[1]
-        r_col = rtn.columns[2]
-
+        f_col, b_col, r_col = rtn.columns[0], rtn.columns[1], rtn.columns[2]
         fund_r = rtn[f_col]
-        bm_r = rtn[b_col]
-        rfr_r = rtn[r_col]
+        bm_r   = rtn[b_col]
+        rfr_r  = rtn[r_col]
 
-        # Cumulative returns for chart
-        vami = ftk.return_to_price(rtn[[f_col, b_col]])
-        dates = [str(d) for d in vami.index]
-        fund_vami = [_safe(float(v)) for v in vami[f_col]]
-        bm_vami = [_safe(float(v)) for v in vami[b_col]]
+        # Market filter
+        if market == "Up":
+            mask = fund_r >= 0
+            fund_r, bm_r, rfr_r = fund_r[mask], bm_r[mask], rfr_r[mask]
+        elif market == "Down":
+            mask = fund_r < 0
+            fund_r, bm_r, rfr_r = fund_r[mask], bm_r[mask], rfr_r[mask]
 
-        def s(fn, *args, **kwargs):
-            try:
-                v = fn(*args, **kwargs)
-                return _safe(float(v))
-            except Exception:
-                return None
+        # Chart series based on window mode
+        if window == "Rolling":
+            chart_fund = fund_r.rolling(window_size).apply(
+                lambda x: float((1 + x).prod() - 1), raw=True)
+            chart_bm = bm_r.rolling(window_size).apply(
+                lambda x: float((1 + x).prod() - 1), raw=True)
+            chart_dates = [str(d) for d in chart_fund.index]
+        elif window == "Trailing":
+            cum_f = (1 + fund_r).cumprod()
+            cum_b = (1 + bm_r).cumprod()
+            chart_fund = cum_f.iloc[-1] / cum_f - 1
+            chart_bm   = cum_b.iloc[-1] / cum_b - 1
+            chart_dates = [str(d) for d in chart_fund.index]
+        else:  # Cumulative (VAMI)
+            vami = ftk.return_to_price(pd.concat([fund_r, bm_r], axis=1))
+            chart_dates = [str(d) for d in vami.index]
+            chart_fund  = vami.iloc[:, 0]
+            chart_bm    = vami.iloc[:, 1]
 
-        metrics = {
-            "Performance": {
-                "Ann. Return": s(ftk.compound_return, fund_r, annualize=True),
-                "Ann. Benchmark": s(ftk.compound_return, bm_r, annualize=True),
-                "Best Month": s(ftk.best_period, fund_r),
-                "Worst Month": s(ftk.worst_period, fund_r),
-                "% Positive": s(ftk.avg_pos, fund_r),
-            },
-            "Risk": {
-                "Ann. Volatility": s(ftk.volatility, fund_r, annualize=True),
-                "Skewness": s(ftk.skew, fund_r),
-                "Kurtosis": s(ftk.kurt, fund_r),
-                "Max Drawdown": s(ftk.worst_drawdown, fund_r),
-                "Semi-Deviation": s(ftk.semi_deviation, fund_r),
-            },
-            "Regression": {
-                "Beta": s(ftk.beta, fund_r, bm_r),
-                "Alpha (Ann.)": s(ftk.alpha, fund_r, bm_r, annualize=True, legacy=True),
-                "Correlation": s(ftk.correlation, rtn[[f_col, b_col]].to_numpy()),
-                "R-Squared": s(ftk.rsquared, fund_r, bm_r),
-            },
-            "Efficiency": {
-                "Sharpe": s(ftk.sharpe, fund_r, rfr_r),
-                "Sortino": s(ftk.sortino, fund_r, rfr_r),
-                "Treynor": s(ftk.treynor, fund_r, bm_r, rfr_r),
-                "Information Ratio": s(ftk.information_ratio, fund_r, bm_r),
-                "Up Capture": s(ftk.up_capture, fund_r, bm_r),
-                "Down Capture": s(ftk.down_capture, fund_r, bm_r),
-                "Tracking Error": s(ftk.tracking_error, fund_r, bm_r, annualize=True),
-            },
-        }
+        sig = 1 - ci
+
+        perf_metrics = [
+            _m("Annualized Return",              lambda: ftk.compound_return(fund_r, annualize=True)),
+            _m("Cumulative Return",              lambda: ftk.compound_return(fund_r, annualize=False)),
+            _m("Growth of $100",                 lambda: 100 * (1 + ftk.compound_return(fund_r, annualize=False)), fmt="dollar"),
+            _m("Observations",                   lambda: float(fund_r.count()), fmt="int"),
+            _m("Number of Positive Periods",     lambda: float((fund_r >= 0).sum()), fmt="int"),
+            _m("Number of Negative Periods",     lambda: float((fund_r < 0).sum()), fmt="int"),
+            _m("Average Return",                 lambda: ftk.arithmetic_mean(fund_r)),
+            _m("Average Positive Return",        lambda: ftk.avg_pos(fund_r)),
+            _m("Average Negative Return",        lambda: ftk.avg_neg(fund_r)),
+            _m("Best Period",                    lambda: ftk.best_period(fund_r)),
+            _m("Worst Period",                   lambda: ftk.worst_period(fund_r)),
+            _m("Max Consecutive Gain Return",    lambda: ftk.max_consecutive_gain(fund_r)),
+            _m("Max Consecutive Loss Return",    lambda: ftk.max_consecutive_loss(fund_r)),
+            _m("Consecutive Positive Periods",   lambda: float(ftk.consecutive_positive_periods(fund_r)), fmt="int"),
+            _m("Consecutive Negative Periods",   lambda: float(ftk.consecutive_negative_periods(fund_r)), fmt="int"),
+            _m("Cumulative Excess Return",       lambda: ftk.active_return(fund_r, bm_r, annualize=False)),
+            _m("Annualized Excess Return",       lambda: ftk.active_return(fund_r, bm_r, annualize=True)),
+            _m("Excess Return - Geometric",      lambda: ftk.excess_return_geometric(fund_r, bm_r)),
+            _m("Periods Above Benchmark",        lambda: float((fund_r - bm_r > 0).sum()), fmt="int"),
+            _m("Percentage Above Benchmark",     lambda: (fund_r - bm_r > 0).mean()),
+            _m("Percent Profitable Periods",     lambda: (fund_r > 0).mean()),
+        ]
+
+        risk_metrics = [
+            _m("Annualized Volatility",  lambda: ftk.volatility(fund_r, annualize=True)),
+            _m("Annualized Variance",    lambda: ftk.variance(fund_r, annualize=True)),
+            _m("Skewness",               lambda: ftk.skew(fund_r), fmt="decimal"),
+            _m("Excess Kurtosis",        lambda: ftk.kurt(fund_r), fmt="decimal"),
+            _m("Jarque-Bera",            lambda: ftk.jarque_bera(fund_r), fmt="decimal"),
+            _m("Max Drawdown",           lambda: ftk.worst_drawdown(fund_r)),
+            _m("Average Drawdown",       lambda: ftk.all_drawdown(fund_r).mean()),
+            _m("Current Drawdown",       lambda: ftk.current_drawdown(fund_r)),
+            _m("Semi Deviation",         lambda: ftk.semi_deviation(fund_r)),
+            _m("Gain Deviation (MAR)",   lambda: ftk.downside_risk(-fund_r, 0, annualize=True)),
+            _m("Loss Deviation",         lambda: ftk.downside_risk(fund_r, rfr_r, ddof=0, annualize=True)),
+            _m("Bias Ratio",             lambda: ftk.bias_ratio(fund_r), fmt="decimal"),
+            _m("Gain/Loss Ratio",        lambda: ftk.gain_loss(fund_r), fmt="decimal"),
+        ]
+
+        var_metrics = [
+            _m("Gaussian VaR",       lambda: ftk.var_normal(fund_r, sig=sig)),
+            _m("Cornish-Fisher VaR", lambda: ftk.var_modified(fund_r, sig=sig)),
+            _m("Gaussian CVaR",      lambda: ftk.cvar_normal(fund_r, sig=sig)),
+        ]
+
+        regression_metrics = [
+            _m("Beta",                         lambda: ftk.beta(fund_r, bm_r), fmt="decimal"),
+            _m("Beta T-Stat",                  lambda: ftk.beta_t_stat(fund_r, bm_r), fmt="decimal"),
+            _m("Beta (Rfr Adjusted)",          lambda: ftk.beta(fund_r - rfr_r, bm_r - rfr_r), fmt="decimal"),
+            _m("Alpha (Annualized)",           lambda: ftk.alpha(fund_r, bm_r, annualize=True, legacy=True)),
+            _m("Jensen Alpha",                 lambda: ftk.alpha(fund_r, bm_r, rfr_r, annualize=True, legacy=True)),
+            _m("Correlation",                  lambda: ftk.correlation(pd.concat([fund_r, bm_r], axis=1)).iloc[0, -1], fmt="decimal"),
+            _m("R²",                           lambda: ftk.rsquared(fund_r, bm_r)),
+            _m("Standard Error of Regression", lambda: ftk.ser(fund_r, bm_r), fmt="decimal"),
+            _m("Autocorrelation",              lambda: float(fund_r.autocorr()), fmt="decimal"),
+        ]
+
+        efficiency_metrics = [
+            _m("Sharpe Ratio",                lambda: ftk.sharpe(fund_r, rfr_r), fmt="decimal"),
+            _m("Reward to Risk Ratio",        lambda: ftk.reward_to_risk(fund_r), fmt="decimal"),
+            _m("Treynor Ratio",               lambda: ftk.treynor(fund_r, bm_r, rfr_r), fmt="decimal"),
+            _m("Sortino Ratio",               lambda: ftk.sortino(fund_r, rfr_r), fmt="decimal"),
+            _m("Sterling Ratio",              lambda: ftk.sterling_modified(fund_r), fmt="decimal"),
+            _m("Calmar Ratio",                lambda: ftk.calmar(fund_r), fmt="decimal"),
+            _m("Up Market Return",            lambda: ftk.up_market_return(fund_r, bm_r)),
+            _m("Down Market Return",          lambda: ftk.down_market_return(fund_r, bm_r)),
+            _m("Up Capture",                  lambda: ftk.up_capture(fund_r, bm_r)),
+            _m("Down Capture",                lambda: ftk.down_capture(fund_r, bm_r)),
+            _m("Tracking Error",              lambda: ftk.tracking_error(fund_r, bm_r, annualize=True)),
+            _m("Information Ratio",           lambda: ftk.information_ratio(fund_r, bm_r), fmt="decimal"),
+            _m("Batting Average",             lambda: ftk.batting_average(fund_r, bm_r)),
+            _m("Up Period Batting Average",   lambda: ftk.up_batting_average(fund_r, bm_r)),
+            _m("Down Market Batting Average", lambda: ftk.down_batting_average(fund_r, bm_r)),
+            _m("Rolling Batting Average",     lambda: ftk.rolling_batting_average(fund_r, bm_r)),
+        ]
 
         result = _clean({
             "fund": fund,
             "benchmark": benchmark,
-            "dates": dates,
-            "fund_vami": fund_vami,
-            "bm_vami": bm_vami,
-            "metrics": metrics,
+            "window": window,
+            "dates": chart_dates,
+            "fund_chart":   [_safe(float(v)) for v in chart_fund],
+            "bm_chart":     [_safe(float(v)) for v in chart_bm],
+            "fund_returns": [_safe(float(v)) for v in fund_r],
+            "bm_returns":   [_safe(float(v)) for v in bm_r],
             "observations": int(len(fund_r)),
+            "metrics": {
+                "Performance":   perf_metrics,
+                "Risk":          risk_metrics,
+                "Value at Risk": var_metrics,
+                "Regression":    regression_metrics,
+                "Efficiency":    efficiency_metrics,
+            },
         })
         _cache[cache_key] = (result, now)
         return result
