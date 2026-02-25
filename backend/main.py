@@ -602,7 +602,14 @@ def heatmap(
                 v = returns.iloc[p_idx][asset]
                 data.append([a_idx, p_idx, _safe(round(float(v), 4)) if not pd.isna(v) else None])
 
-        result = {"assets": assets, "periods": periods_list, "data": data}
+        most_recent_year = returns.index.year.max()
+        ytd_rets = returns[returns.index.year == most_recent_year]
+        ytd = {
+            col: _safe(float((1 + ytd_rets[col].dropna()).prod() - 1)) if len(ytd_rets[col].dropna()) > 0 else None
+            for col in returns.columns
+        }
+
+        result = {"assets": assets, "periods": periods_list, "data": data, "ytd": ytd}
         _cache[cache_key] = (result, now)
         return result
     except Exception as e:
