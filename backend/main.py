@@ -877,6 +877,51 @@ def _m(name, fn, fmt="pct"):
         return {"name": name, "value": None, "fmt": fmt}
 
 
+PERF_MEASURES = [
+    "Return", "Volatility", "VaR", "CVaR", "Drawdown",
+    "Sharpe", "Tracking Error", "Beta", "Autocorrelation", "Risk Reward",
+]
+
+
+def _perf_measure(label, fund_win, bm_win, rfr_win, annualize, ci):
+    """Compute a single scalar chart measure for a window of returns."""
+    try:
+        if len(fund_win) < 2:
+            return None
+        sig = 1 - ci
+        if label == "Return":
+            v = ftk.compound_return(fund_win, annualize=annualize)
+        elif label == "Volatility":
+            v = ftk.volatility(fund_win, annualize=annualize)
+        elif label == "VaR":
+            v = ftk.var_normal(fund_win, sig=sig)
+        elif label == "CVaR":
+            v = ftk.cvar_normal(fund_win, sig=sig)
+        elif label == "Drawdown":
+            v = ftk.current_drawdown(fund_win)
+        elif label == "Sharpe":
+            v = ftk.sharpe(fund_win, rfr_win)
+        elif label == "Tracking Error":
+            if len(bm_win) < 2:
+                return None
+            v = ftk.tracking_error(fund_win, bm_win, annualize=annualize)
+        elif label == "Beta":
+            if len(bm_win) < 2:
+                return None
+            v = ftk.beta(fund_win, bm_win)
+        elif label == "Autocorrelation":
+            if len(fund_win) < 3:
+                return None
+            v = float(fund_win.autocorr())
+        elif label == "Risk Reward":
+            v = ftk.reward_to_risk(fund_win)
+        else:
+            return None
+        return _safe(float(v))
+    except Exception:
+        return None
+
+
 @app.get("/api/performance")
 def performance(
     fund: str = Query(default="FCNTX"),
@@ -887,9 +932,11 @@ def performance(
     window_size: int = Query(default=36, ge=6, le=120),
     market: str = Query(default="All"),
     ci: float = Query(default=0.95, ge=0.9, le=0.995),
+    annualize: bool = Query(default=False),
+    measures: str = Query(default="Return,Volatility"),
     current_user: dict = Depends(get_current_user),
 ):
-    cache_key = f"perf_{fund}_{benchmark}_{rfr_ticker}_{period}_{window}_{window_size}_{market}_{ci}"
+    cache_key = f"perf_{fund}_{benchmark}_{rfr_ticker}_{period}_{window}_{window_size}_{market}_{ci}_{annualize}_{measures}"
     now = time.time()
     if cache_key in _cache:
         val, ts = _cache[cache_key]
@@ -901,6 +948,7 @@ def performance(
         px = px.resample("ME").last()
         px.iloc[:, 2] = px.iloc[:, 2] / 12 / 100  # RFR: annualised % → monthly decimal
         rtn = ftk.price_to_return(px).dropna()
+        rtn_full = rtn.copy()  # preserve full history for raw returns table
 
         period_map = {"1Y": 12, "3Y": 36, "5Y": 60, "10Y": 120, "All": None}
         n = period_map.get(period)
@@ -920,24 +968,41 @@ def performance(
             mask = fund_r < 0
             fund_r, bm_r, rfr_r = fund_r[mask], bm_r[mask], rfr_r[mask]
 
-        # Chart series based on window mode
-        if window == "Rolling":
-            chart_fund = fund_r.rolling(window_size).apply(
-                lambda x: float((1 + x).prod() - 1), raw=True)
-            chart_bm = bm_r.rolling(window_size).apply(
-                lambda x: float((1 + x).prod() - 1), raw=True)
-            chart_dates = [str(d) for d in chart_fund.index]
-        elif window == "Trailing":
-            cum_f = (1 + fund_r).cumprod()
-            cum_b = (1 + bm_r).cumprod()
-            chart_fund = cum_f.iloc[-1] / cum_f - 1
-            chart_bm   = cum_b.iloc[-1] / cum_b - 1
-            chart_dates = [str(d) for d in chart_fund.index]
-        else:  # Cumulative (VAMI)
-            vami = ftk.return_to_price(pd.concat([fund_r, bm_r], axis=1))
-            chart_dates = [str(d) for d in vami.index]
-            chart_fund  = vami.iloc[:, 0]
-            chart_bm    = vami.iloc[:, 1]
+        # Multi-measure chart (rolling / trailing / cumulative windows)
+        measures_list = [m for m in measures.split(",") if m in PERF_MEASURES] or ["Return"]
+        n_obs = len(fund_r)
+        chart_dates = [str(d) for d in fund_r.index]
+        chart_measures_out = {}
+        for meas in measures_list:
+            fv, bv = [], []
+            for t in range(n_obs):
+                if window == "Rolling":
+                    s = t - window_size + 1
+                    if s < 0:
+                        fv.append(None); bv.append(None); continue
+                    fw = fund_r.iloc[s:t+1]; bw = bm_r.iloc[s:t+1]; rw = rfr_r.iloc[s:t+1]
+                elif window == "Trailing":
+                    fw = fund_r.iloc[t:]; bw = bm_r.iloc[t:]; rw = rfr_r.iloc[t:]
+                    if len(fw) < 12:
+                        fv.append(None); bv.append(None); continue
+                else:  # Cumulative
+                    fw = fund_r.iloc[:t+1]; bw = bm_r.iloc[:t+1]; rw = rfr_r.iloc[:t+1]
+                fv.append(_perf_measure(meas, fw, bw, rw, annualize, ci))
+                bv.append(_perf_measure(meas, bw, fw, rw, annualize, ci))
+            chart_measures_out[meas] = {"fund": fv, "benchmark": bv}
+
+        # Raw returns (full history, pre-filter) for the year×month table
+        raw_dates = [str(d.date()) for d in rtn_full.index]
+        raw_returns = {
+            "fund":      dict(zip(raw_dates, [_safe(float(v)) for v in rtn_full[f_col]])),
+            "benchmark": dict(zip(raw_dates, [_safe(float(v)) for v in rtn_full[b_col]])),
+        }
+        ytd_year = rtn_full.index.year.max()
+        ytd_mask = rtn_full.index.year == ytd_year
+        raw_ytd = {
+            "fund":      _safe(float((1 + rtn_full[f_col][ytd_mask].dropna()).prod() - 1)),
+            "benchmark": _safe(float((1 + rtn_full[b_col][ytd_mask].dropna()).prod() - 1)),
+        }
 
         sig = 1 - ci
 
@@ -1023,8 +1088,7 @@ def performance(
             "benchmark": benchmark,
             "window": window,
             "dates": chart_dates,
-            "fund_chart":   [_safe(float(v)) for v in chart_fund],
-            "bm_chart":     [_safe(float(v)) for v in chart_bm],
+            "chart_measures": chart_measures_out,
             "fund_returns": [_safe(float(v)) for v in fund_r],
             "bm_returns":   [_safe(float(v)) for v in bm_r],
             "observations": int(len(fund_r)),
@@ -1035,6 +1099,8 @@ def performance(
                 "Regression":    regression_metrics,
                 "Efficiency":    efficiency_metrics,
             },
+            "raw_returns": raw_returns,
+            "raw_ytd":     raw_ytd,
         })
         _cache[cache_key] = (result, now)
         return result
