@@ -5,7 +5,7 @@ import {
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
   Checkbox, ListItemText,
 } from "@mui/material";
-import ReactECharts from "echarts-for-react";
+import VegaChart from "../../components/VegaChart";
 import PageLayout from "../../components/PageLayout";
 import { getHeatmap } from "../../api";
 
@@ -24,7 +24,7 @@ export default function Heatmap() {
   const [period, setPeriod]           = useState("Annually");
   const [annualize, setAnnualize]     = useState(false);
   const [groupBy, setGroupBy]         = useState("Period");
-  const [selectedAssets, setSelectedAssets] = useState(null); // null = uninitialized (show all)
+  const [selectedAssets, setSelectedAssets] = useState(null);
 
   const [data, setData]       = useState(null);
   const [loading, setLoading] = useState(true);
@@ -38,74 +38,71 @@ export default function Heatmap() {
       .finally(() => setLoading(false));
   }, [period, annualize]);
 
-  // Initialise selectedAssets on first data load
   useEffect(() => {
     if (data?.assets && selectedAssets === null) setSelectedAssets(data.assets);
   }, [data]);
 
-  // Visible assets and their remapped indices for the chart
   const visibleAssets = data ? (selectedAssets ?? data.assets) : [];
   const assetIndexMap = new Map(
     data ? visibleAssets.map((a, i) => [data.assets.indexOf(a), i]) : []
   );
 
-  // ── Chart option ────────────────────────────────────────────────────────
-  const chartOption = data && visibleAssets.length > 0 ? (() => {
-    // Filter to selected assets, remap asset indices
+  const chartSpec = data && visibleAssets.length > 0 ? (() => {
     const filtered = (data.data || [])
-      .filter(([a]) => assetIndexMap.has(a))
-      .map(([a, p, v]) => [assetIndexMap.get(a), p, v]);
+      .filter(([a]) => assetIndexMap.has(a));
 
-    // Swap axes for "Group by Security"
-    const chartData  = groupBy === "Security" ? filtered.map(([a, p, v]) => [p, a, v]) : filtered;
-    const xAxisData  = groupBy === "Security" ? data.periods : visibleAssets;
-    const yAxisData  = groupBy === "Security" ? visibleAssets : data.periods;
+    const values = filtered.map(([a, p, v]) => {
+      const asset = visibleAssets[assetIndexMap.get(a)];
+      const per = data.periods[p];
+      const label = v != null ? (v * 100).toFixed(1) + "%" : "";
+      return groupBy === "Security"
+        ? { x: per, y: asset, value: v, label }
+        : { x: asset, y: per, value: v, label };
+    });
 
-    const vals   = chartData.map((d) => d[2]).filter((v) => v != null);
+    const xSort = groupBy === "Security" ? data.periods : visibleAssets;
+    const ySort = groupBy === "Security" ? visibleAssets : data.periods;
+
+    const vals = values.map((d) => d.value).filter((v) => v != null);
     const absMax = vals.length ? Math.max(...vals.map(Math.abs)) : 1;
+    const numRows = ySort.length;
+    const height = Math.max(280, numRows * 22 + 100);
 
     return {
-      title: { text: "Periodic Table of Returns", left: "center", textStyle: { fontSize: 13 } },
-      tooltip: {
-        formatter: (params) => {
-          const [xi, yi, v] = params.data;
-          const asset = groupBy === "Security" ? yAxisData[yi] : xAxisData[xi];
-          const per   = groupBy === "Security" ? xAxisData[xi] : yAxisData[yi];
-          return `${asset}<br/>${per}: ${v != null ? (v * 100).toFixed(2) + "%" : "N/A"}`;
+      title: { text: "Periodic Table of Returns", anchor: "middle", fontSize: 13 },
+      height,
+      data: { values },
+      layer: [
+        {
+          mark: "rect",
+          encoding: {
+            x: { field: "x", type: "ordinal", sort: xSort, axis: { labelAngle: groupBy === "Security" ? -30 : 0, labelFontSize: groupBy === "Security" ? 8 : 10, title: null } },
+            y: { field: "y", type: "ordinal", sort: ySort, axis: { labelFontSize: 9, title: null } },
+            color: {
+              field: "value", type: "quantitative",
+              scale: { domain: [-absMax, 0, absMax], range: ["#d32f2f", "#ffffff", "#388e3c"] },
+              legend: null,
+            },
+            tooltip: [
+              { field: "y", title: groupBy === "Security" ? "Asset" : "Period" },
+              { field: "x", title: groupBy === "Security" ? "Period" : "Asset" },
+              { field: "label", title: "Return" },
+            ],
+          },
         },
-      },
-      grid: { top: 60, bottom: 20, left: 20, right: 20, containLabel: true },
-      xAxis: {
-        type: "category", data: xAxisData,
-        axisLabel: { rotate: 30, fontSize: groupBy === "Security" ? 8 : 10 },
-        splitArea: { show: true },
-      },
-      yAxis: {
-        type: "category", data: yAxisData,
-        axisLabel: { fontSize: 9 },
-        splitArea: { show: true },
-      },
-      visualMap: {
-        min: -absMax, max: absMax, calculable: true,
-        orient: "horizontal", left: "center", bottom: -10,
-        inRange: { color: ["#d32f2f", "#ffffff", "#388e3c"] },
-      },
-      series: [{
-        type: "heatmap", data: chartData,
-        label: {
-          show: true,
-          formatter: (p) => p.data[2] != null ? (p.data[2] * 100).toFixed(1) + "%" : "",
-          fontSize: 9,
+        {
+          mark: { type: "text", fontSize: 9 },
+          encoding: {
+            x: { field: "x", type: "ordinal", sort: xSort },
+            y: { field: "y", type: "ordinal", sort: ySort },
+            text: { field: "label", type: "nominal" },
+            color: { value: "#333333" },
+          },
         },
-        emphasis: { itemStyle: { shadowBlur: 10 } },
-      }],
+      ],
     };
   })() : null;
 
-  const numRows   = groupBy === "Security" ? visibleAssets.length : (data?.periods.length ?? 0);
-  const chartH    = Math.max(300, numRows * 22 + 120);
-
-  // ── Sidebar ──────────────────────────────────────────────────────────────
   const sidebar = (
     <>
       <SideLabel>Period</SideLabel>
@@ -152,7 +149,6 @@ export default function Heatmap() {
     </>
   );
 
-  // ── Raw returns table ────────────────────────────────────────────────────
   const matrix = data ? (() => {
     const m = {};
     data.data.forEach(([a, p, v]) => {
@@ -173,9 +169,9 @@ export default function Heatmap() {
       {loading && <Box sx={{ display: "flex", justifyContent: "center", py: 8 }}><CircularProgress /></Box>}
       {error && <Alert severity="error">{error}</Alert>}
 
-      {data && chartOption && (
+      {data && chartSpec && (
         <Paper elevation={2} sx={{ p: 2, borderRadius: 2, mb: 3 }}>
-          <ReactECharts option={chartOption} style={{ height: chartH }} />
+          <VegaChart spec={chartSpec} />
         </Paper>
       )}
 

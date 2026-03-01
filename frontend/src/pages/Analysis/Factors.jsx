@@ -1,10 +1,10 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import {
   Box, Typography, TextField, Button, Select, MenuItem, FormControl, InputLabel,
   Alert, CircularProgress, Grid, Paper, Card, CardContent,
   Switch, FormControlLabel, Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
 } from "@mui/material";
-import ReactECharts from "echarts-for-react";
+import VegaChart from "../../components/VegaChart";
 import PageLayout from "../../components/PageLayout";
 import { getFactors, getFactorDatasets } from "../../api";
 
@@ -42,20 +42,38 @@ export default function Factors() {
       .finally(() => setLoading(false));
   }, [ticker, dataset, mom]);
 
-  const chartOption = data ? {
-    title: { text: `${data.ticker} vs. Factor Model`, left: "center", textStyle: { fontSize: 13 } },
-    tooltip: { trigger: "axis" },
-    legend: { bottom: 0, data: [data.ticker, "Factor Model"] },
-    xAxis: { type: "category", data: data.dates, axisLabel: { rotate: 30, fontSize: 9 } },
-    yAxis: { type: "value", name: "Price (rebased)", axisLabel: { formatter: (v) => v?.toFixed(1) } },
-    series: [
-      { name: data.ticker, type: "line", data: data.portfolio_price, lineStyle: { color: "#1976d2", width: 2 }, symbol: "none" },
-      { name: "Factor Model", type: "line", data: data.explained_price, lineStyle: { color: "#d32f2f", width: 2, type: "dashed" }, symbol: "none" },
-    ],
-    grid: { containLabel: true, top: 50, bottom: 50 },
-    animation: false,
-    dataZoom: [{ type: "inside" }, { type: "slider", bottom: 5 }],
-  } : null;
+  const chartSpec = data ? (() => {
+    const values = data.dates.flatMap((d, i) => [
+      { date: d, value: data.portfolio_price[i], series: data.ticker },
+      { date: d, value: data.explained_price[i], series: "Factor Model" },
+    ]).filter((d) => d.value != null);
+    return {
+      title: { text: `${data.ticker} vs. Factor Model`, anchor: "middle", fontSize: 13 },
+      height: 340,
+      data: { values },
+      mark: { type: "line", strokeWidth: 2 },
+      encoding: {
+        x: { field: "date", type: "ordinal", axis: { labelAngle: -30, labelFontSize: 9, title: null } },
+        y: { field: "value", type: "quantitative", axis: { format: ".1f", title: "Price (rebased)" } },
+        color: {
+          field: "series", type: "nominal",
+          scale: { domain: [data.ticker, "Factor Model"], range: ["#1976d2", "#d32f2f"] },
+          legend: { orient: "bottom" },
+        },
+        strokeDash: {
+          field: "series", type: "nominal",
+          scale: { domain: [data.ticker, "Factor Model"], range: [[1, 0], [6, 3]] },
+          legend: null,
+        },
+        tooltip: [
+          { field: "date", title: "Date" },
+          { field: "series", title: "Series" },
+          { field: "value", title: "Price", format: ".2f" },
+        ],
+      },
+      params: [{ name: "grid", select: "interval", bind: "scales" }],
+    };
+  })() : null;
 
   const sidebar = (
     <>
@@ -109,7 +127,7 @@ export default function Factors() {
             </Table>
           </TableContainer>
           <Paper elevation={2} sx={{ p: 1, borderRadius: 2 }}>
-            <ReactECharts option={chartOption} style={{ height: 360 }} />
+            <VegaChart spec={chartSpec} />
           </Paper>
         </>
       )}

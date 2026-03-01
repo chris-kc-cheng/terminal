@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import {
   Box, Typography, Slider, Alert, CircularProgress, Grid, Paper,
 } from "@mui/material";
-import ReactECharts from "echarts-for-react";
+import VegaChart from "../../components/VegaChart";
 import PageLayout from "../../components/PageLayout";
 import { getPortfolio } from "../../api";
 
@@ -39,62 +39,111 @@ export default function Portfolio() {
 
   const strategies = data ? Object.keys(data.weights) : [];
 
-  const weightsOption = data ? {
-    title: { text: "Portfolio Weights", left: "center", textStyle: { fontSize: 13 } },
-    tooltip: { trigger: "axis", axisPointer: { type: "shadow" } },
-    legend: { bottom: 0, data: strategies },
-    xAxis: { type: "category", data: data.assets, axisLabel: { rotate: 30, fontSize: 9 } },
-    yAxis: { type: "value", axisLabel: { formatter: pct } },
-    series: strategies.map((s, i) => ({
-      name: s, type: "bar",
-      data: data.assets.map((a) => data.weights[s][a] ?? 0),
-      itemStyle: { color: STRAT_COLORS[i % STRAT_COLORS.length] },
-    })),
-    grid: { containLabel: true, top: 40, bottom: 60 },
-    animation: false,
-  } : null;
-
-  const riskOption = data ? {
-    title: { text: "Risk Contribution", left: "center", textStyle: { fontSize: 13 } },
-    tooltip: { trigger: "axis", axisPointer: { type: "shadow" } },
-    legend: { bottom: 0, data: strategies },
-    xAxis: { type: "category", data: data.assets, axisLabel: { rotate: 30, fontSize: 9 } },
-    yAxis: { type: "value", axisLabel: { formatter: pct } },
-    series: strategies.map((s, i) => ({
-      name: s, type: "bar",
-      data: data.assets.map((a) => data.risk_contribution[s]?.[a] ?? 0),
-      itemStyle: { color: STRAT_COLORS[i % STRAT_COLORS.length] },
-    })),
-    grid: { containLabel: true, top: 40, bottom: 60 },
-    animation: false,
-  } : null;
-
-  const scatterOption = data ? {
-    title: { text: "Risk-Return", left: "center", textStyle: { fontSize: 13 } },
-    tooltip: { formatter: (p) => `${p.data[2]}<br/>Vol: ${pct(p.data[0])}<br/>Ret: ${pct(p.data[1])}` },
-    xAxis: { type: "value", name: "Volatility", axisLabel: { formatter: pct } },
-    yAxis: { type: "value", name: "Return", axisLabel: { formatter: pct } },
-    series: [
-      {
-        name: "Assets",
-        type: "scatter",
-        data: data.assets.map((a) => [data.asset_vols[a], data.asset_returns[a], a]),
-        label: { show: true, formatter: (p) => p.data[2], position: "top", fontSize: 9 },
-        symbolSize: 8,
-        itemStyle: { color: "#90a4ae" },
+  const weightsSpec = data ? (() => {
+    const values = data.assets.flatMap((a) =>
+      strategies.map((s) => ({ asset: a, strategy: s, value: data.weights[s][a] ?? 0 }))
+    );
+    return {
+      title: { text: "Portfolio Weights", anchor: "middle", fontSize: 13 },
+      height: 300,
+      data: { values },
+      mark: { type: "bar" },
+      encoding: {
+        x: { field: "asset", type: "ordinal", axis: { labelAngle: -30, labelFontSize: 9, title: null } },
+        xOffset: { field: "strategy", type: "nominal" },
+        y: { field: "value", type: "quantitative", axis: { format: ".0%", title: null } },
+        color: {
+          field: "strategy", type: "nominal",
+          scale: { domain: strategies, range: STRAT_COLORS.slice(0, strategies.length) },
+          legend: { orient: "bottom" },
+        },
+        tooltip: [
+          { field: "asset", title: "Asset" },
+          { field: "strategy", title: "Strategy" },
+          { field: "value", title: "Weight", format: ".2%" },
+        ],
       },
-      {
-        name: "Strategies",
-        type: "scatter",
-        data: strategies.map((s, i) => [data.strategy_rr[s]?.vol, data.strategy_rr[s]?.ret, s]),
-        label: { show: true, formatter: (p) => p.data[2], position: "top", fontSize: 9 },
-        symbolSize: 14,
-        itemStyle: { color: (p) => STRAT_COLORS[strategies.indexOf(p.data[2]) % STRAT_COLORS.length] },
+    };
+  })() : null;
+
+  const riskSpec = data ? (() => {
+    const values = data.assets.flatMap((a) =>
+      strategies.map((s) => ({ asset: a, strategy: s, value: data.risk_contribution[s]?.[a] ?? 0 }))
+    );
+    return {
+      title: { text: "Risk Contribution", anchor: "middle", fontSize: 13 },
+      height: 300,
+      data: { values },
+      mark: { type: "bar" },
+      encoding: {
+        x: { field: "asset", type: "ordinal", axis: { labelAngle: -30, labelFontSize: 9, title: null } },
+        xOffset: { field: "strategy", type: "nominal" },
+        y: { field: "value", type: "quantitative", axis: { format: ".0%", title: null } },
+        color: {
+          field: "strategy", type: "nominal",
+          scale: { domain: strategies, range: STRAT_COLORS.slice(0, strategies.length) },
+          legend: { orient: "bottom" },
+        },
+        tooltip: [
+          { field: "asset", title: "Asset" },
+          { field: "strategy", title: "Strategy" },
+          { field: "value", title: "Risk Contribution", format: ".2%" },
+        ],
       },
-    ],
-    grid: { containLabel: true },
-    animation: false,
-  } : null;
+    };
+  })() : null;
+
+  const scatterSpec = data ? (() => {
+    const assetVals = data.assets.map((a) => ({
+      vol: data.asset_vols[a], ret: data.asset_returns[a], name: a, group: "Asset",
+    }));
+    const stratVals = strategies.map((s) => ({
+      vol: data.strategy_rr[s]?.vol, ret: data.strategy_rr[s]?.ret, name: s, group: "Strategy",
+    }));
+    const values = [...assetVals, ...stratVals];
+    return {
+      title: { text: "Risk-Return", anchor: "middle", fontSize: 13 },
+      height: 320,
+      data: { values },
+      layer: [
+        {
+          mark: { type: "point", filled: true },
+          encoding: {
+            x: { field: "vol", type: "quantitative", axis: { format: ".1%", title: "Volatility" } },
+            y: { field: "ret", type: "quantitative", axis: { format: ".1%", title: "Return" } },
+            size: {
+              field: "group", type: "nominal",
+              scale: { domain: ["Asset", "Strategy"], range: [64, 196] },
+              legend: null,
+            },
+            color: {
+              condition: { test: "datum.group === 'Strategy'", field: "name", type: "nominal",
+                scale: { domain: strategies, range: STRAT_COLORS.slice(0, strategies.length) } },
+              value: "#90a4ae",
+            },
+            tooltip: [
+              { field: "name", title: "Name" },
+              { field: "vol", title: "Volatility", format: ".2%" },
+              { field: "ret", title: "Return", format: ".2%" },
+            ],
+          },
+        },
+        {
+          mark: { type: "text", dy: -10, fontSize: 9 },
+          encoding: {
+            x: { field: "vol", type: "quantitative" },
+            y: { field: "ret", type: "quantitative" },
+            text: { field: "name", type: "nominal" },
+            color: {
+              condition: { test: "datum.group === 'Strategy'", field: "name", type: "nominal",
+                scale: { domain: strategies, range: STRAT_COLORS.slice(0, strategies.length) } },
+              value: "#546e7a",
+            },
+          },
+        },
+      ],
+    };
+  })() : null;
 
   const sidebar = (
     <>
@@ -115,17 +164,17 @@ export default function Portfolio() {
         <Grid container spacing={3}>
           <Grid item xs={12} md={6}>
             <Paper elevation={2} sx={{ p: 1, borderRadius: 2 }}>
-              <ReactECharts option={weightsOption} style={{ height: 340 }} />
+              <VegaChart spec={weightsSpec} />
             </Paper>
           </Grid>
           <Grid item xs={12} md={6}>
             <Paper elevation={2} sx={{ p: 1, borderRadius: 2 }}>
-              <ReactECharts option={riskOption} style={{ height: 340 }} />
+              <VegaChart spec={riskSpec} />
             </Paper>
           </Grid>
           <Grid item xs={12}>
             <Paper elevation={2} sx={{ p: 1, borderRadius: 2 }}>
-              <ReactECharts option={scatterOption} style={{ height: 340 }} />
+              <VegaChart spec={scatterSpec} />
             </Paper>
           </Grid>
         </Grid>

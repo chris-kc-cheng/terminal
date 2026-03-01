@@ -4,7 +4,7 @@ import {
   Alert, CircularProgress, Grid, Paper,
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
 } from "@mui/material";
-import ReactECharts from "echarts-for-react";
+import VegaChart from "../../components/VegaChart";
 import PageLayout from "../../components/PageLayout";
 import { getPeers } from "../../api";
 
@@ -31,38 +31,72 @@ export default function Peers() {
       .finally(() => setLoading(false));
   }, [tickers, benchmark, rfr, period]);
 
-  const vamiOption = data ? {
-    title: { text: "Growth of $1 (VAMI)", left: "center", textStyle: { fontSize: 13 } },
-    tooltip: { trigger: "axis" },
-    legend: { bottom: 0, data: data.funds },
-    xAxis: { type: "category", data: data.vami.map((r) => r.date), axisLabel: { rotate: 30, fontSize: 9 } },
-    yAxis: { type: "value", name: "Value", axisLabel: { formatter: (v) => `$${v.toFixed(2)}` } },
-    series: data.funds.map((f, i) => ({
-      name: f, type: "line",
-      data: data.vami.map((r) => r[f] ?? null),
-      lineStyle: { color: COLORS[i % COLORS.length], width: 2 },
-      symbol: "none", connectNulls: true,
-    })),
-    grid: { containLabel: true, top: 50, bottom: 50 },
-    animation: false,
-    dataZoom: [{ type: "inside" }, { type: "slider", bottom: 5 }],
-  } : null;
+  const vamiSpec = data ? (() => {
+    const values = data.vami.flatMap((r) =>
+      data.funds.map((f) => ({ date: r.date, value: r[f] ?? null, fund: f }))
+    ).filter((d) => d.value != null);
+    return {
+      title: { text: "Growth of $1 (VAMI)", anchor: "middle", fontSize: 13 },
+      height: 300,
+      data: { values },
+      mark: { type: "line", strokeWidth: 2 },
+      encoding: {
+        x: { field: "date", type: "ordinal", axis: { labelAngle: -30, labelFontSize: 9, title: null } },
+        y: { field: "value", type: "quantitative", axis: { format: "$.2f", title: null } },
+        color: {
+          field: "fund", type: "nominal",
+          scale: { domain: data.funds, range: COLORS.slice(0, data.funds.length) },
+          legend: { orient: "bottom" },
+        },
+        tooltip: [
+          { field: "date", title: "Date" },
+          { field: "fund", title: "Fund" },
+          { field: "value", title: "Value", format: "$.2f" },
+        ],
+      },
+      params: [{ name: "grid", select: "interval", bind: "scales" }],
+    };
+  })() : null;
 
-  const scatterOption = data ? {
-    title: { text: "Return vs. Volatility", left: "center", textStyle: { fontSize: 13 } },
-    tooltip: { formatter: (p) => `${p.data[2]}<br/>Vol: ${pct(p.data[0])}<br/>Ret: ${pct(p.data[1])}` },
-    xAxis: { type: "value", name: "Ann. Volatility", axisLabel: { formatter: pct } },
-    yAxis: { type: "value", name: "Ann. Return", axisLabel: { formatter: pct } },
-    series: [{
-      type: "scatter",
-      data: data.scatter.map((s) => [s.vol, s.ret, s.name]),
-      symbolSize: 12,
-      label: { show: true, formatter: (p) => p.data[2], position: "top", fontSize: 9 },
-      itemStyle: { color: (p) => COLORS[data.funds.indexOf(p.data[2]) % COLORS.length] },
-    }],
-    grid: { containLabel: true },
-    animation: false,
-  } : null;
+  const scatterSpec = data ? (() => {
+    const values = data.scatter.map((s) => ({ vol: s.vol, ret: s.ret, name: s.name }));
+    return {
+      title: { text: "Return vs. Volatility", anchor: "middle", fontSize: 13 },
+      height: 280,
+      data: { values },
+      layer: [
+        {
+          mark: { type: "point", size: 100, filled: true },
+          encoding: {
+            x: { field: "vol", type: "quantitative", axis: { format: ".1%", title: "Ann. Volatility" } },
+            y: { field: "ret", type: "quantitative", axis: { format: ".1%", title: "Ann. Return" } },
+            color: {
+              field: "name", type: "nominal",
+              scale: { domain: data.funds, range: COLORS.slice(0, data.funds.length) },
+              legend: null,
+            },
+            tooltip: [
+              { field: "name", title: "Fund" },
+              { field: "vol", title: "Volatility", format: ".2%" },
+              { field: "ret", title: "Return", format: ".2%" },
+            ],
+          },
+        },
+        {
+          mark: { type: "text", dy: -10, fontSize: 9 },
+          encoding: {
+            x: { field: "vol", type: "quantitative" },
+            y: { field: "ret", type: "quantitative" },
+            text: { field: "name", type: "nominal" },
+            color: {
+              field: "name", type: "nominal",
+              scale: { domain: data.funds, range: COLORS.slice(0, data.funds.length) },
+            },
+          },
+        },
+      ],
+    };
+  })() : null;
 
   const sidebar = (
     <>
@@ -96,12 +130,12 @@ export default function Peers() {
       {data && (
         <>
           <Paper elevation={2} sx={{ p: 1, borderRadius: 2, mb: 3 }}>
-            <ReactECharts option={vamiOption} style={{ height: 320 }} />
+            <VegaChart spec={vamiSpec} />
           </Paper>
           <Grid container spacing={2} sx={{ mb: 3 }}>
             <Grid item xs={12} md={6}>
               <Paper elevation={2} sx={{ p: 1, borderRadius: 2 }}>
-                <ReactECharts option={scatterOption} style={{ height: 300 }} />
+                <VegaChart spec={scatterSpec} />
               </Paper>
             </Grid>
             <Grid item xs={12} md={6}>

@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import {
   Box, Typography, Slider, ToggleButtonGroup, ToggleButton, Alert, CircularProgress, Paper,
 } from "@mui/material";
-import ReactECharts from "echarts-for-react";
+import VegaChart from "../../components/VegaChart";
 import PageLayout from "../../components/PageLayout";
 import { getCurrency } from "../../api";
 
@@ -21,56 +21,59 @@ export default function Currency() {
       .finally(() => setLoading(false));
   }, [lookback, show]);
 
-  const option = data ? (() => {
+  const spec = data ? (() => {
     const matrix = show === "Change" ? data.matrix_change : data.matrix_quote;
     const labels = data.labels;
-    const echartsData = [];
+    const values = [];
     let minVal = Infinity, maxVal = -Infinity;
     matrix.forEach((row, i) => row.forEach((val, j) => {
       if (val != null) {
-        echartsData.push([j, i, val]);
+        const label = show === "Change" ? val.toFixed(1) + "%" : val.toFixed(2);
+        values.push({ x: labels[j], y: labels[i], value: val, label });
         if (val < minVal) minVal = val;
         if (val > maxVal) maxVal = val;
       }
     }));
     const absMax = Math.max(Math.abs(minVal), Math.abs(maxVal));
+    const colorScale = show === "Change"
+      ? { domain: [-absMax, 0, absMax], range: ["#d32f2f", "#ffffff", "#388e3c"] }
+      : { domain: [minVal, maxVal], range: ["#e3f2fd", "#1976d2"] };
+
     return {
       title: {
         text: show === "Change" ? `FX Change (last ${lookback} trading days, %)` : "FX Quote Matrix",
-        left: "center",
+        anchor: "middle",
       },
-      tooltip: {
-        formatter: (p) => {
-          const [col, row, val] = p.data;
-          return `${labels[row]}/${labels[col]}: ${val != null ? (show === "Change" ? val.toFixed(2) + "%" : val.toFixed(4)) : "—"}`;
-        },
-      },
-      grid: { top: 60, bottom: 60, left: 60, right: 20 },
-      xAxis: { type: "category", data: labels, splitArea: { show: true } },
-      yAxis: { type: "category", data: labels, splitArea: { show: true } },
-      visualMap: {
-        min: show === "Change" ? -absMax : minVal,
-        max: show === "Change" ? absMax : maxVal,
-        calculable: true,
-        orient: "horizontal",
-        left: "center",
-        bottom: 10,
-        inRange: { color: show === "Change" ? ["#d32f2f", "#ffffff", "#388e3c"] : ["#e3f2fd", "#1976d2"] },
-      },
-      series: [{
-        name: "FX",
-        type: "heatmap",
-        data: echartsData,
-        label: {
-          show: true,
-          formatter: (p) => {
-            const v = p.data[2];
-            return v == null ? "" : show === "Change" ? v.toFixed(1) + "%" : v.toFixed(2);
+      height: 480,
+      data: { values },
+      layer: [
+        {
+          mark: "rect",
+          encoding: {
+            x: { field: "x", type: "ordinal", sort: labels, axis: { title: null } },
+            y: { field: "y", type: "ordinal", sort: labels, axis: { title: null } },
+            color: {
+              field: "value", type: "quantitative",
+              scale: colorScale,
+              legend: null,
+            },
+            tooltip: [
+              { field: "y", title: "Domestic" },
+              { field: "x", title: "Foreign" },
+              { field: "label", title: "Value" },
+            ],
           },
-          fontSize: 10,
         },
-        emphasis: { itemStyle: { shadowBlur: 10, shadowColor: "rgba(0,0,0,0.5)" } },
-      }],
+        {
+          mark: { type: "text", fontSize: 10 },
+          encoding: {
+            x: { field: "x", type: "ordinal", sort: labels },
+            y: { field: "y", type: "ordinal", sort: labels },
+            text: { field: "label", type: "nominal" },
+            color: { value: "#333333" },
+          },
+        },
+      ],
     };
   })() : null;
 
@@ -98,9 +101,9 @@ export default function Currency() {
       </Typography>
       {loading && <Box sx={{ display: "flex", justifyContent: "center", py: 8 }}><CircularProgress /></Box>}
       {error && <Alert severity="error">{error}</Alert>}
-      {data && option && (
+      {data && spec && (
         <Paper elevation={2} sx={{ p: 2, borderRadius: 2 }}>
-          <ReactECharts option={option} style={{ height: 520 }} />
+          <VegaChart spec={spec} />
         </Paper>
       )}
     </PageLayout>

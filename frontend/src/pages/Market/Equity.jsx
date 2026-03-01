@@ -4,7 +4,7 @@ import {
   Alert, CircularProgress, Tabs, Tab, Table, TableBody, TableCell,
   TableContainer, TableHead, TableRow, Paper, Chip,
 } from "@mui/material";
-import ReactECharts from "echarts-for-react";
+import VegaChart from "../../components/VegaChart";
 import PageLayout from "../../components/PageLayout";
 import { getEquity } from "../../api";
 
@@ -39,19 +39,31 @@ function RegionTable({ rows }) {
   );
 }
 
-function BarOption(rows) {
+function barSpec(rows) {
+  const values = rows.flatMap((r) => [
+    { name: r.name, period: "MTD", value: r.mtd },
+    { name: r.name, period: "QTD", value: r.qtd },
+    { name: r.name, period: "YTD", value: r.ytd },
+  ]);
   return {
-    tooltip: { trigger: "axis" },
-    legend: { data: ["MTD", "QTD", "YTD"], bottom: 0 },
-    xAxis: { type: "category", data: rows.map((r) => r.name), axisLabel: { rotate: 30, fontSize: 10 } },
-    yAxis: { type: "value", axisLabel: { formatter: (v) => `${(v * 100).toFixed(0)}%` } },
-    series: [
-      { name: "MTD", type: "bar", data: rows.map((r) => r.mtd), itemStyle: { color: "#1976d2" } },
-      { name: "QTD", type: "bar", data: rows.map((r) => r.qtd), itemStyle: { color: "#388e3c" } },
-      { name: "YTD", type: "bar", data: rows.map((r) => r.ytd), itemStyle: { color: "#f57c00" } },
-    ],
-    grid: { containLabel: true, bottom: 50 },
-    animation: false,
+    height: 240,
+    data: { values },
+    mark: { type: "bar" },
+    encoding: {
+      x: { field: "name", type: "ordinal", axis: { labelAngle: -30, labelFontSize: 10, title: null } },
+      xOffset: { field: "period", type: "nominal" },
+      y: { field: "value", type: "quantitative", axis: { format: ".0%", title: null } },
+      color: {
+        field: "period", type: "nominal",
+        scale: { domain: ["MTD", "QTD", "YTD"], range: ["#1976d2", "#388e3c", "#f57c00"] },
+        legend: { orient: "bottom" },
+      },
+      tooltip: [
+        { field: "name", title: "Index" },
+        { field: "period", title: "Period" },
+        { field: "value", title: "Return", format: ".2%" },
+      ],
+    },
   };
 }
 
@@ -103,7 +115,7 @@ export default function Equity() {
           {regionRows[tab] && (
             <>
               <Paper elevation={2} sx={{ p: 1, borderRadius: 2, mb: 2 }}>
-                <ReactECharts option={BarOption(regionRows[tab].rows)} style={{ height: 280 }} />
+                <VegaChart spec={barSpec(regionRows[tab].rows)} />
               </Paper>
               <RegionTable rows={regionRows[tab].rows} />
             </>

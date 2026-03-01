@@ -3,7 +3,7 @@ import {
   Box, Typography, Slider, Select, MenuItem, FormControl, InputLabel,
   Alert, CircularProgress, Grid, Paper, Card, CardContent,
 } from "@mui/material";
-import ReactECharts from "echarts-for-react";
+import VegaChart from "../../components/VegaChart";
 import PageLayout from "../../components/PageLayout";
 import { getOptions, getOptionStrategies } from "../../api";
 
@@ -32,19 +32,36 @@ function MetricCard({ label, value, color }) {
   );
 }
 
-function lineChart(title, spots, values, color) {
+const GREEK_COLORS = { Price: "#1976d2", Delta: "#388e3c", Gamma: "#f57c00", Theta: "#d32f2f", Vega: "#7b1fa2" };
+
+function greekSpec(title, spots, values, color) {
+  const data = spots.map((s, i) => ({ spot: s, value: values[i] }));
   return {
-    title: { text: title, left: "center", textStyle: { fontSize: 12 } },
-    tooltip: { trigger: "axis" },
-    xAxis: { type: "category", data: spots.map((s) => s.toFixed(0)), name: "Spot Price" },
-    yAxis: { type: "value", axisLabel: { formatter: (v) => v.toFixed(2) } },
-    series: [{ type: "line", data: values, lineStyle: { color, width: 2 }, symbol: "none", areaStyle: { color, opacity: 0.08 } }],
-    grid: { containLabel: true, top: 40, bottom: 30 },
-    animation: false,
+    title: { text: title, anchor: "middle", fontSize: 12 },
+    height: 200,
+    data: { values: data },
+    layer: [
+      {
+        mark: { type: "area", color, opacity: 0.08, strokeWidth: 0 },
+        encoding: {
+          x: { field: "spot", type: "quantitative", axis: { title: "Spot Price" } },
+          y: { field: "value", type: "quantitative", axis: { format: ".2f", title: null } },
+        },
+      },
+      {
+        mark: { type: "line", color, strokeWidth: 2 },
+        encoding: {
+          x: { field: "spot", type: "quantitative" },
+          y: { field: "value", type: "quantitative" },
+          tooltip: [
+            { field: "spot", title: "Spot", format: ".0f" },
+            { field: "value", title: title, format: ".4f" },
+          ],
+        },
+      },
+    ],
   };
 }
-
-const GREEK_COLORS = { Price: "#1976d2", Delta: "#388e3c", Gamma: "#f57c00", Theta: "#d32f2f", Vega: "#7b1fa2" };
 
 export default function Options() {
   const [strategies, setStrategies] = useState(["Long Call"]);
@@ -101,7 +118,7 @@ export default function Options() {
               return (
                 <Grid item xs={12} md={6} key={greek}>
                   <Paper elevation={2} sx={{ p: 1, borderRadius: 2 }}>
-                    <ReactECharts option={lineChart(title, data.spots, data[greek], GREEK_COLORS[title])} style={{ height: 220 }} />
+                    <VegaChart spec={greekSpec(title, data.spots, data[greek], GREEK_COLORS[title])} />
                   </Paper>
                 </Grid>
               );

@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import {
   Box, Typography, Tabs, Tab, Alert, CircularProgress, Grid, Card, CardContent, Chip,
 } from "@mui/material";
-import ReactECharts from "echarts-for-react";
+import VegaChart from "../../components/VegaChart";
 import PageLayout from "../../components/PageLayout";
 import { getEconomic } from "../../api";
 
@@ -33,24 +33,30 @@ function StatCard({ title, series }) {
   );
 }
 
-function lineOption(title, series1, series2, label1, label2) {
-  const mkSeries = (data, name, color) => ({
-    name,
-    type: "line",
-    data: data.map((d) => [d.date, d.value != null ? (d.value * 100).toFixed(2) : null]),
-    lineStyle: { color, width: 2 },
-    symbol: "none",
-    connectNulls: true,
-  });
+function lineSpec(title, series1, series2, label1, label2) {
+  const values = [
+    ...series1.filter((d) => d.value != null).map((d) => ({ date: d.date, value: d.value, series: label1 })),
+    ...series2.filter((d) => d.value != null).map((d) => ({ date: d.date, value: d.value, series: label2 })),
+  ];
   return {
-    title: { text: title, left: "center", textStyle: { fontSize: 13 } },
-    tooltip: { trigger: "axis", formatter: (p) => p.map((s) => `${s.seriesName}: ${s.value[1]}%`).join("<br/>") },
-    legend: { bottom: 0, data: [label1, label2] },
-    xAxis: { type: "time" },
-    yAxis: { type: "value", axisLabel: { formatter: (v) => `${v}%` } },
-    series: [mkSeries(series1, label1, "#1976d2"), mkSeries(series2, label2, "#d32f2f")],
-    grid: { containLabel: true, top: 50, bottom: 40 },
-    animation: false,
+    title: { text: title, anchor: "middle", fontSize: 13 },
+    height: 340,
+    data: { values },
+    mark: { type: "line", strokeWidth: 2 },
+    encoding: {
+      x: { field: "date", type: "temporal", axis: { title: null } },
+      y: { field: "value", type: "quantitative", axis: { format: ".1%", title: null } },
+      color: {
+        field: "series", type: "nominal",
+        scale: { domain: [label1, label2], range: ["#1976d2", "#d32f2f"] },
+        legend: { orient: "bottom" },
+      },
+      tooltip: [
+        { field: "date", title: "Date", timeUnit: "yearmonth" },
+        { field: "series", title: "Country" },
+        { field: "value", title: "Value", format: ".2%" },
+      ],
+    },
   };
 }
 
@@ -83,9 +89,7 @@ export default function Indices() {
                 <Grid item xs={12} sm={6}><StatCard title="Canada CPI (YoY)" series={data.ca_cpi} /></Grid>
                 <Grid item xs={12} sm={6}><StatCard title="US CPI (YoY)" series={data.us_cpi} /></Grid>
               </Grid>
-              <Box sx={{ height: 380 }}>
-                <ReactECharts option={lineOption("CPI Year-over-Year", data.ca_cpi, data.us_cpi, "Canada", "United States")} style={{ height: "100%" }} />
-              </Box>
+              <VegaChart spec={lineSpec("CPI Year-over-Year", data.ca_cpi, data.us_cpi, "Canada", "United States")} />
             </>
           )}
           {tab === 1 && (
@@ -94,9 +98,7 @@ export default function Indices() {
                 <Grid item xs={12} sm={6}><StatCard title="Canada Unemployment" series={data.ca_unemployment} /></Grid>
                 <Grid item xs={12} sm={6}><StatCard title="US Unemployment" series={data.us_unemployment} /></Grid>
               </Grid>
-              <Box sx={{ height: 380 }}>
-                <ReactECharts option={lineOption("Unemployment Rate", data.ca_unemployment, data.us_unemployment, "Canada", "United States")} style={{ height: "100%" }} />
-              </Box>
+              <VegaChart spec={lineSpec("Unemployment Rate", data.ca_unemployment, data.us_unemployment, "Canada", "United States")} />
             </>
           )}
         </>

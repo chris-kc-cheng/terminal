@@ -32,7 +32,7 @@ import Equity from "../pages/Market/Equity";
 import FixedIncome from "../pages/Market/FixedIncome";
 import Currency from "../pages/Market/Currency";
 import Indices from "../pages/Market/Indices";
-import Heatmap from "../pages/Analysis/Heatmap";
+import Heatmap from "../pages/Market/Heatmap";
 import Performance from "../pages/Analysis/Performance";
 import Portfolio from "../pages/Analysis/Portfolio";
 import Factors from "../pages/Analysis/Factors";

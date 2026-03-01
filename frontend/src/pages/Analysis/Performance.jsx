@@ -8,7 +8,7 @@ import {
   Tabs, Tab,
 } from "@mui/material";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
-import ReactECharts from "echarts-for-react";
+import VegaChart from "../../components/VegaChart";
 import PageLayout from "../../components/PageLayout";
 import { getPerformance } from "../../api";
 
@@ -17,7 +17,6 @@ const ALL_MEASURES = [
   "Sharpe", "Tracking Error", "Beta", "Autocorrelation", "Risk Reward",
 ];
 
-// Measures where y-axis is a ratio (not %)
 const RATIO_MEASURES = new Set(["Beta", "Autocorrelation", "Sharpe", "Risk Reward"]);
 
 function fmtVal(value, fmt, decimals) {
@@ -66,17 +65,15 @@ function SideLabel({ children }) {
   );
 }
 
-// Build year×month return matrix from a {dateStr: value} dict
 function buildYearMatrix(returnDict) {
   const matrix = {};
   Object.entries(returnDict || {}).forEach(([dateStr, v]) => {
     const d = new Date(dateStr);
     const yr = d.getFullYear();
-    const mo = d.getMonth(); // 0–11
+    const mo = d.getMonth();
     if (!matrix[yr]) matrix[yr] = Array(12).fill(null);
     matrix[yr][mo] = v;
   });
-  // Compute YTD per year
   const result = {};
   Object.entries(matrix).forEach(([yr, months]) => {
     const ytd = months.reduce((acc, v) => (v != null ? acc * (1 + v) : acc), 1) - 1;
@@ -87,13 +84,11 @@ function buildYearMatrix(returnDict) {
 
 const MONTH_LABELS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 
-function RawReturnTable({ label, returnDict, ytd }) {
+function RawReturnTable({ label, returnDict }) {
   const matrix = buildYearMatrix(returnDict);
-  const years = Object.keys(matrix).sort((a, b) => b - a); // descending
-
+  const years = Object.keys(matrix).sort((a, b) => b - a);
   const fmtCell = (v) => v != null ? `${(v * 100).toFixed(1)}%` : "—";
   const cellColor = (v) => v == null ? "text.disabled" : v >= 0 ? "success.main" : "error.main";
-
   return (
     <TableContainer sx={{ maxHeight: 340 }}>
       <Table size="small" stickyHeader>
@@ -130,7 +125,6 @@ function RawReturnTable({ label, returnDict, ytd }) {
 }
 
 export default function Performance() {
-  // Committed state (triggers API fetch)
   const [fund, setFund]               = useState("FCNTX");
   const [benchmark, setBenchmark]     = useState("^GSPC");
   const [rfrTicker, setRfrTicker]     = useState("^IRX");
@@ -141,18 +135,13 @@ export default function Performance() {
   const [ci, setCi]                   = useState(0.95);
   const [annualize, setAnnualize]     = useState(false);
   const [measures, setMeasures]       = useState(["Return", "Volatility"]);
-
-  // Inputs (staged, committed on Search)
   const [inputs, setInputs] = useState({ fund: "FCNTX", benchmark: "^GSPC", rfrTicker: "^IRX" });
-
-  // Frontend-only display controls
   const [groupBy, setGroupBy]         = useState("Measure");
   const [showFund, setShowFund]       = useState(true);
   const [showBm, setShowBm]           = useState(true);
   const [binSize, setBinSize]         = useState(0.01);
   const [decimals, setDecimals]       = useState(2);
   const [rawTab, setRawTab]           = useState(0);
-
   const [data, setData]       = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState(null);
@@ -169,67 +158,74 @@ export default function Performance() {
       .finally(() => setLoading(false));
   }, [fund, benchmark, rfrTicker, period, chartWindow, windowSize, market, ci, annualize, measures]);
 
-  // ── Multi-measure charts ────────────────────────────────────────────────
-  const isRatio = (m) => RATIO_MEASURES.has(m);
-  const yFmt = (m) => (v) => isRatio(m) ? v.toFixed(2) : `${(v * 100).toFixed(1)}%`;
-
-  function makeChart(title, fundSeries, bmSeries) {
+  function makeChartSpec(title, fundSeries, bmSeries) {
     const dates = data?.dates || [];
-    const series = [
-      showFund && fundSeries && {
-        name: data.fund, type: "line", data: fundSeries,
-        lineStyle: { color: "#1976d2", width: 2 }, symbol: "none",
-      },
-      showBm && bmSeries && {
-        name: data.benchmark, type: "line", data: bmSeries,
-        lineStyle: { color: "#d32f2f", width: 2, type: "dashed" }, symbol: "none",
-      },
-    ].filter(Boolean);
-
+    const isRatio = RATIO_MEASURES.has(title);
+    const yFmt = isRatio ? ".2f" : ".1%";
+    const values = [];
+    if (showFund && fundSeries) {
+      dates.forEach((d, i) => { if (fundSeries[i] != null) values.push({ date: d, value: fundSeries[i], series: data.fund }); });
+    }
+    if (showBm && bmSeries) {
+      dates.forEach((d, i) => { if (bmSeries[i] != null) values.push({ date: d, value: bmSeries[i], series: data.benchmark }); });
+    }
+    const domain = [showFund && data.fund, showBm && data.benchmark].filter(Boolean);
+    const range  = [showFund && "#1976d2", showBm && "#d32f2f"].filter(Boolean);
     return {
-      title: { text: title, left: "center", textStyle: { fontSize: 12 } },
-      tooltip: { trigger: "axis", formatter: (params) =>
-        params.map((p) => `${p.seriesName}: ${isRatio(title) ? p.value?.toFixed(2) : `${((p.value||0)*100).toFixed(2)}%`}`).join("<br/>")
+      title: { text: title, anchor: "middle", fontSize: 12 },
+      height: 210,
+      data: { values },
+      mark: { type: "line", strokeWidth: 2 },
+      encoding: {
+        x: { field: "date", type: "ordinal", axis: { labelAngle: -30, labelFontSize: 8, title: null } },
+        y: { field: "value", type: "quantitative", axis: { format: yFmt, labelFontSize: 9, title: null } },
+        color: {
+          field: "series", type: "nominal",
+          scale: { domain, range },
+          legend: { orient: "bottom" },
+        },
+        tooltip: [
+          { field: "date", title: "Date" },
+          { field: "series", title: "Series" },
+          { field: "value", title: "Value", format: yFmt },
+        ],
       },
-      legend: { bottom: 0, data: series.map((s) => s.name) },
-      xAxis: { type: "category", data: dates, axisLabel: { rotate: 30, fontSize: 8 } },
-      yAxis: { type: "value", axisLabel: { formatter: yFmt(title), fontSize: 9 } },
-      series,
-      grid: { containLabel: true, top: 40, bottom: 50 },
-      animation: false,
     };
   }
 
-  // Build charts based on groupBy
-  const chartPanels = data?.chart_measures ? (() => {
+  function makeSecChartSpec(label, key) {
     const cm = data.chart_measures;
-    if (groupBy === "Measure") {
-      // One panel per selected measure; each shows fund + bm
-      return Object.entries(cm).map(([meas, { fund: fv, benchmark: bv }]) =>
-        ({ title: meas, fundSeries: fv, bmSeries: bv })
-      );
-    } else {
-      // One panel per security; each shows all measures
-      const secPanels = [];
-      [[data.fund, "fund"], [data.benchmark, "benchmark"]].forEach(([label, key]) => {
-        const series = Object.entries(cm).map(([meas, vals]) => ({
-          name: meas, type: "line", data: vals[key], symbol: "none",
-          lineStyle: { width: 2 },
-        }));
-        secPanels.push({ label, series });
+    const values = [];
+    Object.entries(cm).forEach(([meas, vals]) => {
+      (vals[key] || []).forEach((v, i) => {
+        if (v != null) values.push({ date: data.dates[i], value: v, measure: meas });
       });
-      return secPanels;
-    }
-  })() : [];
+    });
+    return {
+      title: { text: label, anchor: "middle", fontSize: 12 },
+      height: 210,
+      data: { values },
+      mark: { type: "line", strokeWidth: 2 },
+      encoding: {
+        x: { field: "date", type: "ordinal", axis: { labelAngle: -30, labelFontSize: 8, title: null } },
+        y: { field: "value", type: "quantitative", axis: { labelFontSize: 9, title: null } },
+        color: { field: "measure", type: "nominal", legend: { orient: "bottom" } },
+        tooltip: [
+          { field: "date", title: "Date" },
+          { field: "measure", title: "Measure" },
+          { field: "value", title: "Value", format: ".4f" },
+        ],
+      },
+    };
+  }
 
-  // ── Histogram ─────────────────────────────────────────────────────────
-  const histOption = data ? (() => {
+  const histSpec = data ? (() => {
     const fundRets = showFund ? (data.fund_returns || []) : [];
     const bmRets   = showBm   ? (data.bm_returns   || []) : [];
     const allVals  = [...fundRets, ...bmRets].filter((v) => v != null);
     if (!allVals.length) return null;
     const lo = Math.floor(Math.min(...allVals) / binSize) * binSize;
-    const hi = Math.ceil(Math.max(...allVals)  / binSize) * binSize;
+    const hi = Math.ceil(Math.max(...allVals) / binSize) * binSize;
     const bins = [];
     for (let b = lo; b <= hi + binSize * 0.001; b += binSize) bins.push(parseFloat(b.toFixed(6)));
     const bucket = (v) => Math.min(Math.max(Math.floor((v - lo) / binSize), 0), bins.length - 1);
@@ -237,22 +233,37 @@ export default function Performance() {
     const bC = new Array(bins.length).fill(0);
     fundRets.forEach((v) => { if (v != null) fC[bucket(v)]++; });
     bmRets.forEach((v)   => { if (v != null) bC[bucket(v)]++; });
+    const histValues = [];
+    bins.forEach((b, i) => {
+      const label = `${(b * 100).toFixed(1)}%`;
+      if (showFund && fC[i] > 0) histValues.push({ bin: label, count: fC[i], series: data.fund, idx: i });
+      if (showBm   && bC[i] > 0) histValues.push({ bin: label, count: bC[i], series: data.benchmark, idx: i });
+    });
+    const domain = [showFund && data.fund, showBm && data.benchmark].filter(Boolean);
+    const range  = [showFund && "#1976d2", showBm && "#d32f2f"].filter(Boolean);
     return {
-      title: { text: "Return Distribution", left: "center", textStyle: { fontSize: 13 } },
-      tooltip: { trigger: "axis" },
-      legend: { bottom: 0, data: [showFund && data.fund, showBm && data.benchmark].filter(Boolean) },
-      xAxis: { type: "category", data: bins.map((b) => `${(b * 100).toFixed(1)}%`), axisLabel: { rotate: 30, fontSize: 8 } },
-      yAxis: { type: "value", name: "Count" },
-      series: [
-        showFund && { name: data.fund,      type: "bar", data: fC, itemStyle: { color: "#1976d2", opacity: 0.75 } },
-        showBm   && { name: data.benchmark, type: "bar", data: bC, itemStyle: { color: "#d32f2f", opacity: 0.75 } },
-      ].filter(Boolean),
-      grid: { containLabel: true, top: 50, bottom: 50 },
-      animation: false,
+      title: { text: "Return Distribution", anchor: "middle", fontSize: 13 },
+      height: 200,
+      data: { values: histValues },
+      mark: { type: "bar", opacity: 0.75 },
+      encoding: {
+        x: { field: "bin", type: "ordinal", sort: { field: "idx" }, axis: { labelAngle: -30, labelFontSize: 8, title: null } },
+        xOffset: { field: "series", type: "nominal" },
+        y: { field: "count", type: "quantitative", axis: { title: "Count" } },
+        color: {
+          field: "series", type: "nominal",
+          scale: { domain, range },
+          legend: { orient: "bottom" },
+        },
+        tooltip: [
+          { field: "bin", title: "Return" },
+          { field: "series", title: "Series" },
+          { field: "count", title: "Count" },
+        ],
+      },
     };
   })() : null;
 
-  // ── Sidebar ─────────────────────────────────────────────────────────────
   const tbSx = { fontSize: 10, px: 0.5 };
 
   const sidebar = (
@@ -355,7 +366,6 @@ export default function Performance() {
 
       {data && (
         <>
-          {/* ── Measure multi-select (in main content, above charts) ── */}
           <Box sx={{ mb: 2, display: "flex", alignItems: "center", gap: 1, flexWrap: "wrap" }}>
             <Typography variant="body2" fontWeight={600} sx={{ minWidth: 70 }}>Measure</Typography>
             <FormControl size="small" sx={{ minWidth: 240 }}>
@@ -375,49 +385,34 @@ export default function Performance() {
             </FormControl>
           </Box>
 
-          {/* ── Multi-measure charts ── */}
           {groupBy === "Measure" ? (
             <Grid container spacing={1} sx={{ mb: 2 }}>
-              {chartPanels.map(({ title, fundSeries, bmSeries }) => (
-                <Grid item xs={12} md={measures.length === 1 ? 12 : 6} key={title}>
+              {data.chart_measures && Object.entries(data.chart_measures).map(([meas, { fund: fv, benchmark: bv }]) => (
+                <Grid item xs={12} md={measures.length === 1 ? 12 : 6} key={meas}>
                   <Paper elevation={2} sx={{ p: 1, borderRadius: 2 }}>
-                    <ReactECharts option={makeChart(title, fundSeries, bmSeries)} style={{ height: 240 }} />
+                    <VegaChart spec={makeChartSpec(meas, fv, bv)} />
                   </Paper>
                 </Grid>
               ))}
             </Grid>
           ) : (
             <Grid container spacing={1} sx={{ mb: 2 }}>
-              {chartPanels.map(({ label, series }) => {
-                const opt = {
-                  title: { text: label, left: "center", textStyle: { fontSize: 12 } },
-                  tooltip: { trigger: "axis" },
-                  legend: { bottom: 0 },
-                  xAxis: { type: "category", data: data.dates, axisLabel: { rotate: 30, fontSize: 8 } },
-                  yAxis: { type: "value", axisLabel: { fontSize: 9 } },
-                  series,
-                  grid: { containLabel: true, top: 40, bottom: 50 },
-                  animation: false,
-                };
-                return (
-                  <Grid item xs={12} md={6} key={label}>
-                    <Paper elevation={2} sx={{ p: 1, borderRadius: 2 }}>
-                      <ReactECharts option={opt} style={{ height: 240 }} />
-                    </Paper>
-                  </Grid>
-                );
-              })}
+              {[[data.fund, "fund"], [data.benchmark, "benchmark"]].map(([label, key]) => (
+                <Grid item xs={12} md={6} key={label}>
+                  <Paper elevation={2} sx={{ p: 1, borderRadius: 2 }}>
+                    <VegaChart spec={makeSecChartSpec(label, key)} />
+                  </Paper>
+                </Grid>
+              ))}
             </Grid>
           )}
 
-          {/* ── Histogram ── */}
-          {histOption && (
+          {histSpec && (
             <Paper elevation={2} sx={{ p: 1, borderRadius: 2, mb: 2 }}>
-              <ReactECharts option={histOption} style={{ height: 220 }} />
+              <VegaChart spec={histSpec} />
             </Paper>
           )}
 
-          {/* ── Metrics tables ── */}
           <Grid container spacing={1} sx={{ mb: 3 }}>
             <Grid item xs={12} md={4}>
               <MetricsTable title="Performance"   metrics={sections["Performance"]}   decimals={decimals} />
@@ -432,7 +427,6 @@ export default function Performance() {
             </Grid>
           </Grid>
 
-          {/* ── Raw returns table (year × month) ── */}
           {data.raw_returns && (
             <Accordion defaultExpanded elevation={2} sx={{ borderRadius: "8px !important" }}>
               <AccordionSummary expandIcon={<ExpandMoreIcon />}>
@@ -443,12 +437,8 @@ export default function Performance() {
                   <Tab label={data.fund}      sx={{ fontSize: 12 }} />
                   <Tab label={data.benchmark} sx={{ fontSize: 12 }} />
                 </Tabs>
-                {rawTab === 0 && (
-                  <RawReturnTable label={data.fund}      returnDict={data.raw_returns?.fund}      ytd={data.raw_ytd?.fund} />
-                )}
-                {rawTab === 1 && (
-                  <RawReturnTable label={data.benchmark} returnDict={data.raw_returns?.benchmark} ytd={data.raw_ytd?.benchmark} />
-                )}
+                {rawTab === 0 && <RawReturnTable label={data.fund}      returnDict={data.raw_returns?.fund} />}
+                {rawTab === 1 && <RawReturnTable label={data.benchmark} returnDict={data.raw_returns?.benchmark} />}
               </AccordionDetails>
             </Accordion>
           )}

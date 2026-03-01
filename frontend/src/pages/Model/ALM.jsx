@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { Box, Typography, Slider, Grid, Alert, CircularProgress, Paper } from "@mui/material";
-import ReactECharts from "echarts-for-react";
+import VegaChart from "../../components/VegaChart";
 import PageLayout from "../../components/PageLayout";
 import { getALM } from "../../api";
 
@@ -16,21 +16,45 @@ function SliderParam({ label, value, onChange, min, max, step, format }) {
   );
 }
 
-function pathsToSeries(paths, color) {
-  return (paths || []).map((path) => ({
-    type: "line", data: path,
-    lineStyle: { color, opacity: 0.25, width: 1 },
-    symbol: "none", silent: true, animation: false,
-  }));
-}
-
-function meanSeries(paths, color, name) {
+function buildPathSpec(title, paths, pathColor, meanColor, yFormat) {
   if (!paths || paths.length === 0) return null;
-  const mean = paths[0].map((_, i) => {
+  const pathValues = paths.flatMap((path, i) =>
+    path.map((v, step) => ({ step, value: v, path: `p${i}` }))
+  );
+  const meanValues = paths[0].map((_, i) => {
     const sum = paths.reduce((acc, p) => acc + (p[i] ?? 0), 0);
-    return +(sum / paths.length).toFixed(5);
+    return { step: i, value: +(sum / paths.length).toFixed(6) };
   });
-  return { name, type: "line", data: mean, lineStyle: { color, width: 2.5 }, symbol: "none", animation: false };
+  return {
+    title: { text: title, anchor: "middle", fontSize: 13 },
+    height: 380,
+    layer: [
+      {
+        data: { values: pathValues },
+        mark: { type: "line", strokeWidth: 0.8, opacity: 0.25 },
+        encoding: {
+          x: { field: "step", type: "quantitative", axis: { labels: false, title: null, ticks: false } },
+          y: { field: "value", type: "quantitative", axis: { format: yFormat, title: null } },
+          detail: { field: "path", type: "nominal" },
+          color: { value: pathColor },
+        },
+      },
+      {
+        data: { values: meanValues },
+        mark: { type: "line", strokeWidth: 2.5 },
+        encoding: {
+          x: { field: "step", type: "quantitative" },
+          y: { field: "value", type: "quantitative" },
+          color: { value: meanColor },
+          tooltip: [
+            { field: "step", title: "Step" },
+            { field: "value", title: "Mean" },
+          ],
+        },
+      },
+    ],
+    resolve: { scale: { color: "independent" } },
+  };
 }
 
 export default function ALM() {
@@ -50,17 +74,6 @@ export default function ALM() {
   }, [JSON.stringify(params)]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
-
-  const xLabels = data ? data.index.map((_, i) => i) : [];
-  const mkOption = (title, paths, pathColor, meanColor, fmtY) => ({
-    title: { text: title, left: "center", textStyle: { fontSize: 13 } },
-    tooltip: { trigger: "axis" },
-    xAxis: { type: "category", data: xLabels, axisLabel: { show: false } },
-    yAxis: { type: "value", axisLabel: { formatter: fmtY } },
-    series: [...pathsToSeries(paths, pathColor), meanSeries(paths, meanColor, "Mean")].filter(Boolean),
-    grid: { containLabel: true, top: 40, bottom: 20 },
-    animation: false,
-  });
 
   const sidebar = (
     <>
@@ -85,12 +98,12 @@ export default function ALM() {
         <Grid container spacing={3}>
           <Grid item xs={12} md={6}>
             <Paper elevation={2} sx={{ p: 1, borderRadius: 2 }}>
-              <ReactECharts option={mkOption("Interest Rate Paths", data.rates, "#1976d2", "#d32f2f", (v) => `${(v * 100).toFixed(1)}%`)} style={{ height: 400 }} />
+              <VegaChart spec={buildPathSpec("Interest Rate Paths", data.rates, "#1976d2", "#d32f2f", ".1%")} />
             </Paper>
           </Grid>
           <Grid item xs={12} md={6}>
             <Paper elevation={2} sx={{ p: 1, borderRadius: 2 }}>
-              <ReactECharts option={mkOption("Zero-Coupon Bond Prices", data.bonds, "#388e3c", "#f57c00", (v) => v?.toFixed(3))} style={{ height: 400 }} />
+              <VegaChart spec={buildPathSpec("Zero-Coupon Bond Prices", data.bonds, "#388e3c", "#f57c00", ".3f")} />
             </Paper>
           </Grid>
         </Grid>
